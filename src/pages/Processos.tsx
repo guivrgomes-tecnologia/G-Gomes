@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, ClipboardList, ChevronDown, Filter } from 'lucide-react'
+import { Plus, X, ClipboardList, ChevronDown } from 'lucide-react'
 import { supabase, Processo, Profile } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 

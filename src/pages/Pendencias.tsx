@@ -26,7 +26,7 @@ const FORM_INITIAL: FormState = { titulo: '', descricao: '', status: 'aberta', p
 type Aba = 'comigo' | 'minhas' | 'todas'
 
 export default function Pendencias() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
   const [showModal, setShowModal] = useState(false)
