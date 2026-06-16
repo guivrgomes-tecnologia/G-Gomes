@@ -9,7 +9,7 @@ const links = [
   { to: '/pendencias',label: 'Pendências',  icon: AlertCircle },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
 
@@ -38,6 +38,7 @@ export default function Sidebar() {
             key={to}
             to={to}
             end={to === '/'}
+            onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isActive
