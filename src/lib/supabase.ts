@@ -1,0 +1,59 @@
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export type Profile = {
+  id: string
+  nome: string
+  email: string
+  cargo: string | null
+  avatar_url: string | null
+  created_at: string
+}
+
+export type Evento = {
+  id: string
+  titulo: string
+  descricao: string | null
+  data_inicio: string
+  data_fim: string | null
+  dia_inteiro: boolean
+  cor: string
+  concluido: boolean
+  criado_por: string
+  created_at: string
+}
+
+export type Processo = {
+  id: string
+  titulo: string
+  descricao: string | null
+  categoria: string
+  status: 'pendente' | 'em_andamento' | 'concluido' | 'cancelado'
+  prioridade: 'baixa' | 'media' | 'alta'
+  responsavel_id: string | null
+  prazo: string | null
+  criado_por: string
+  created_at: string
+  updated_at: string
+  responsavel?: Profile
+}
+
+export type Pendencia = {
+  id: string
+  titulo: string
+  descricao: string | null
+  status: 'aberta' | 'em_andamento' | 'resolvida'
+  prioridade: 'baixa' | 'media' | 'alta'
+  de_usuario_id: string
+  para_usuario_id: string
+  prazo: string | null
+  criado_por: string
+  created_at: string
+  updated_at: string
+  de_usuario?: Profile
+  para_usuario?: Profile
+}

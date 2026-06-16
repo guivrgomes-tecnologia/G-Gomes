@@ -1,0 +1,75 @@
+import { NavLink, useNavigate } from 'react-router-dom'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
+
+const links = [
+  { to: '/',          label: 'Dashboard',   icon: LayoutDashboard },
+  { to: '/agenda',    label: 'Agenda',      icon: Calendar },
+  { to: '/processos', label: 'Processos',   icon: ClipboardList },
+  { to: '/pendencias',label: 'Pendências',  icon: AlertCircle },
+]
+
+export default function Sidebar() {
+  const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  async function handleSignOut() {
+    await signOut()
+    navigate('/login')
+  }
+
+  return (
+    <aside className="w-64 bg-brand-900 text-white flex flex-col h-screen sticky top-0">
+      <div className="px-6 py-5 border-b border-brand-800">
+        <div className="flex items-center gap-3">
+          <div className="bg-brand-500 p-2 rounded-lg">
+            <Building2 size={20} />
+          </div>
+          <div>
+            <p className="font-bold text-sm leading-tight">Brasil Lar</p>
+            <p className="text-brand-300 text-xs">Gestão Interna</p>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {links.map(({ to, label, icon: Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === '/'}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-brand-600 text-white'
+                  : 'text-brand-200 hover:bg-brand-800 hover:text-white'
+              }`
+            }
+          >
+            <Icon size={18} />
+            {label}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="px-4 py-4 border-t border-brand-800">
+        <div className="flex items-center gap-3 mb-3 px-1">
+          <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-sm font-bold">
+            {profile?.nome?.[0]?.toUpperCase() ?? '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{profile?.nome ?? 'Usuário'}</p>
+            <p className="text-brand-300 text-xs truncate">{profile?.cargo ?? ''}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-brand-200 hover:text-white hover:bg-brand-800 rounded-lg transition-colors"
+        >
+          <LogOut size={16} />
+          Sair
+        </button>
+      </div>
+    </aside>
+  )
+}
