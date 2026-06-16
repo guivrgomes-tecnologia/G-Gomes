@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2 } from 'lucide-react'
 import { supabase, Evento, Profile } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import GoogleCalendarSync from '../components/GoogleCalendarSync'
 
 const CORES = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
@@ -72,6 +73,7 @@ export default function Agenda() {
   const [cursor, setCursor] = useState(new Date())
 
   const [showNovo, setShowNovo] = useState(false)
+  const [showSync, setShowSync] = useState(false)
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
 
@@ -489,9 +491,14 @@ export default function Agenda() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Agenda</h1>
-        <button onClick={() => abrirNovo()} className="btn-primary flex items-center gap-2">
-          <Plus size={16} /> Novo evento
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-2">
+            <Link2 size={16} /> Google Calendar
+          </button>
+          <button onClick={() => abrirNovo()} className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Novo evento
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden">
@@ -590,6 +597,7 @@ export default function Agenda() {
       )}
 
       <ModalEvento />
+      {showSync && <GoogleCalendarSync onClose={() => setShowSync(false)} />}
     </div>
   )
 }
