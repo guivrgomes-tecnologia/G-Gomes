@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus } from 'lucide-react'
+import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus, Pencil } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams } from 'react-router-dom'
@@ -58,6 +58,8 @@ export default function Pendencias() {
   const [expandido, setExpandido] = useState<string | null>(null)
   const [filtroSetor, setFiltroSetor] = useState<string>('')
   const [criandoEvento, setCriandoEvento] = useState<string | null>(null)
+  const [editando, setEditando] = useState<Pendencia | null>(null)
+  const [editForm, setEditForm] = useState<FormState>(FORM_INITIAL)
 
   useEffect(() => {
     loadData()
@@ -102,6 +104,44 @@ export default function Pendencias() {
     setSaving(false)
     setShowModal(false)
     setForm(FORM_INITIAL)
+    loadData()
+  }
+
+  function abrirEdicao(pend: Pendencia) {
+    const prazoBase = pend.prazo ? pend.prazo.split('T')[0] : ''
+    const horaBase = pend.prazo && pend.prazo.includes('T') ? pend.prazo.split('T')[1].substring(0, 5) : ''
+    setEditForm({
+      titulo: pend.titulo,
+      descricao: pend.descricao ?? '',
+      status: pend.status,
+      prioridade: pend.prioridade,
+      para_usuario_id: pend.para_usuario_id,
+      prazo: prazoBase,
+      hora: horaBase,
+      setor_id: pend.setor_id ?? '',
+      criar_evento: false,
+    })
+    setEditando(pend)
+  }
+
+  async function salvarEdicao() {
+    if (!editando || !editForm.titulo || !editForm.para_usuario_id) return
+    setSaving(true)
+    const prazoSalvo = editForm.prazo
+      ? (editForm.hora ? `${editForm.prazo}T${editForm.hora}` : editForm.prazo)
+      : null
+    await supabase.from('pendencias').update({
+      titulo: editForm.titulo,
+      descricao: editForm.descricao || null,
+      status: editForm.status,
+      prioridade: editForm.prioridade,
+      para_usuario_id: editForm.para_usuario_id,
+      setor_id: editForm.setor_id || null,
+      prazo: prazoSalvo,
+      updated_at: new Date().toISOString(),
+    }).eq('id', editando.id)
+    setSaving(false)
+    setEditando(null)
     loadData()
   }
 
@@ -229,10 +269,12 @@ export default function Pendencias() {
                         → {STATUS_LABELS[s]}
                       </button>
                     ))}
+                    <button onClick={() => abrirEdicao(pend)}
+                      className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1 transition-colors">
+                      <Pencil size={12} /> Editar
+                    </button>
                     {isParaMim && (
-                      <button
-                        onClick={() => criarEventoManual(pend)}
-                        disabled={criandoEvento === pend.id}
+                      <button onClick={() => criarEventoManual(pend)} disabled={criandoEvento === pend.id}
                         className="text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex items-center gap-1 transition-colors">
                         <CalendarPlus size={12} />
                         {criandoEvento === pend.id ? 'Criando...' : 'Criar evento'}
@@ -319,6 +361,76 @@ export default function Pendencias() {
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancelar</button>
               <button onClick={salvar} disabled={saving || !form.titulo || !form.para_usuario_id} className="btn-primary flex-1">
+                {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editando && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Editar Pendência</h3>
+              <button onClick={() => setEditando(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+                <input className="input" value={editForm.titulo} onChange={e => setEditForm(f => ({ ...f, titulo: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <textarea className="input resize-none" rows={3} value={editForm.descricao} onChange={e => setEditForm(f => ({ ...f, descricao: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Para quem *</label>
+                  <select className="input" value={editForm.para_usuario_id} onChange={e => setEditForm(f => ({ ...f, para_usuario_id: e.target.value }))}>
+                    <option value="">Selecionar...</option>
+                    {equipe.map(p => <option key={p.id} value={p.id}>{p.nome}{p.id === user?.id ? ' (eu)' : ''}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
+                  <select className="input" value={editForm.prioridade} onChange={e => setEditForm(f => ({ ...f, prioridade: e.target.value as Pendencia['prioridade'] }))}>
+                    <option value="baixa">Baixa</option>
+                    <option value="media">Média</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select className="input" value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as Pendencia['status'] }))}>
+                    <option value="aberta">Aberta</option>
+                    <option value="em_andamento">Em andamento</option>
+                    <option value="resolvida">Resolvida</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Setor</label>
+                  <select className="input" value={editForm.setor_id} onChange={e => setEditForm(f => ({ ...f, setor_id: e.target.value }))}>
+                    <option value="">Nenhum</option>
+                    {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                  <input type="date" className="input" value={editForm.prazo} onChange={e => setEditForm(f => ({ ...f, prazo: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+                  <input type="time" className="input" value={editForm.hora} onChange={e => setEditForm(f => ({ ...f, hora: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setEditando(null)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={salvarEdicao} disabled={saving || !editForm.titulo || !editForm.para_usuario_id} className="btn-primary flex-1">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
