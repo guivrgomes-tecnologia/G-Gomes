@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video, AlertCircle } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video, AlertCircle, MessageCircle, Timer } from 'lucide-react'
 import { supabase, Evento, Profile, CategoriaEvento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -519,6 +519,28 @@ export default function Agenda() {
     )
   }
 
+  function useContagem(ev: Evento | null) {
+    const [restante, setRestante] = useState('')
+    useEffect(() => {
+      if (!ev || ev.dia_inteiro || ev.concluido) { setRestante(''); return }
+      function calc() {
+        const agora = Date.now()
+        const inicio = new Date(ev!.data_inicio).getTime()
+        const diff = inicio - agora
+        if (diff <= 0) { setRestante('Em andamento'); return }
+        const h = Math.floor(diff / 3600000)
+        const m = Math.floor((diff % 3600000) / 60000)
+        const s = Math.floor((diff % 60000) / 1000)
+        if (h >= 24) { const d = Math.floor(h / 24); setRestante(`${d}d ${h % 24}h`); return }
+        setRestante(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`)
+      }
+      calc()
+      const id = setInterval(calc, 1000)
+      return () => clearInterval(id)
+    }, [ev])
+    return restante
+  }
+
   function ModalEvento() {
     if (!eventoAtivo) return null
     const ev = eventoAtivo
@@ -526,6 +548,18 @@ export default function Agenda() {
     const idsEdit = ef.participantes ?? participantesAtivos.map(p => p.id)
     const catAtiva = (ev.categoria as CategoriaEvento | undefined)
     const corAtiva = corDoEvento(ev)
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const contagem = useContagem(ev)
+
+    function compartilharWhatsapp() {
+      const data = formatDataHora(ev)
+      const partic = participantesAtivos.length > 0
+        ? '\n👥 ' + participantesAtivos.map(p => p.nome.split(' ')[0]).join(', ')
+        : ''
+      const desc = ev.descricao ? `\n📝 ${ev.descricao}` : ''
+      const texto = `📅 *${ev.titulo}*\n🕐 ${data}${desc}${partic}`
+      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
+    }
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -578,6 +612,12 @@ export default function Agenda() {
                   <span className="flex-1 text-left truncate">Pendência: {pendenciaVinculada.titulo}</span>
                 </button>
               )}
+              {contagem && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${contagem === 'Em andamento' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
+                  <Timer size={15} />
+                  {contagem === 'Em andamento' ? 'Acontecendo agora' : `Faltam ${contagem}`}
+                </div>
+              )}
               {ev.concluido && (
                 <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-2">
                   <CheckCircle2 size={16} /> Evento concluído
@@ -588,6 +628,10 @@ export default function Agenda() {
                   className={`flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${ev.concluido ? 'border-gray-300 text-gray-600 hover:bg-gray-50' : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'}`}>
                   <CheckCircle2 size={16} />
                   {ev.concluido ? 'Marcar como não concluído' : 'Marcar como concluído'}
+                </button>
+                <button onClick={compartilharWhatsapp}
+                  className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg text-sm font-medium bg-green-500 hover:bg-green-600 text-white transition-colors">
+                  <MessageCircle size={15} /> Compartilhar no WhatsApp
                 </button>
                 <div className="flex gap-2">
                   <button onClick={() => {
