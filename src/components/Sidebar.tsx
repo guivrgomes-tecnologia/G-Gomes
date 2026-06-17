@@ -1,20 +1,23 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video } from 'lucide-react'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video, Users } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
-const links = [
-  { to: '/',          label: 'Dashboard',   icon: LayoutDashboard },
-  { to: '/agenda',    label: 'Agenda',      icon: Calendar },
-  { to: '/processos', label: 'Processos',   icon: ClipboardList },
-  { to: '/pendencias',label: 'Pendências',  icon: AlertCircle },
-  { to: '/reunioes',  label: 'Reuniões',    icon: Video },
+const ALL_LINKS = [
+  { to: '/',           label: 'Dashboard',   icon: LayoutDashboard, modulo: null },
+  { to: '/agenda',     label: 'Agenda',      icon: Calendar,        modulo: 'agenda' },
+  { to: '/processos',  label: 'Processos',   icon: ClipboardList,   modulo: 'processos' },
+  { to: '/pendencias', label: 'Pendências',  icon: AlertCircle,     modulo: 'pendencias' },
+  { to: '/reunioes',   label: 'Reuniões',    icon: Video,           modulo: 'reunioes' },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const { status, loading, ativar, desativar } = usePushNotifications()
+
+  const modulos = profile?.modulos ?? ['agenda', 'processos', 'pendencias', 'reunioes']
+  const links = ALL_LINKS.filter(l => l.modulo === null || modulos.includes(l.modulo))
 
   async function handleSignOut() {
     await signOut()
@@ -57,6 +60,12 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
       </nav>
 
       <div className="px-4 py-4 border-t border-brand-800">
+        {profile?.is_admin && (
+          <button onClick={() => { navigate('/admin'); onNavigate() }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-yellow-300 hover:text-white hover:bg-brand-800 rounded-lg transition-colors mb-1">
+            <Users size={16} /> Gerenciar usuários
+          </button>
+        )}
         <button onClick={() => { navigate('/perfil'); onNavigate() }} className="flex items-center gap-3 mb-3 px-1 w-full hover:bg-brand-800 rounded-lg py-1 transition-colors text-left">
           <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-sm font-bold shrink-0">
             {profile?.nome?.[0]?.toUpperCase() ?? '?'}

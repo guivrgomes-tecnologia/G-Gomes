@@ -12,6 +12,7 @@ export type Profile = {
   cargo: string | null
   avatar_url: string | null
   is_admin: boolean
+  modulos: string[] | null
   created_at: string
 }
 

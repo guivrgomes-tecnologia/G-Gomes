@@ -8,6 +8,7 @@ import Processos from './pages/Processos'
 import Pendencias from './pages/Pendencias'
 import Reunioes from './pages/Reunioes'
 import Perfil from './pages/Perfil'
+import Admin from './pages/Admin'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="pendencias" element={<Pendencias />} />
             <Route path="reunioes" element={<Reunioes />} />
             <Route path="perfil" element={<Perfil />} />
+            <Route path="admin" element={<Admin />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
