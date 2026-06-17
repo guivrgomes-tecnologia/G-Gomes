@@ -14,7 +14,7 @@ type Stats = {
 export default function Dashboard() {
   const { profile, user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, processosAbertos: 0, pendenciasMinhas: 0, processosAtrasados: 0 })
+  const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [loading, setLoading] = useState(true)
 
