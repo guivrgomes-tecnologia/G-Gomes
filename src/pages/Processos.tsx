@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, ChevronRight, Pencil, Trash2, Users, Settings, Building2 } from 'lucide-react'
+import { Plus, X, ChevronRight, ChevronLeft, Pencil, Trash2, Users, Settings, Building2 } from 'lucide-react'
 import { supabase, Profile } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -149,8 +149,8 @@ export default function Processos() {
   return (
     <div className="flex h-[calc(100vh-56px)] lg:h-screen overflow-hidden">
 
-      {/* Sidebar de setores */}
-      <div className="w-56 lg:w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+      {/* Sidebar de setores — oculta no mobile quando setor selecionado */}
+      <div className={`${setorAtivo ? 'hidden lg:flex' : 'flex'} w-full lg:w-64 bg-white border-r border-gray-200 flex-col shrink-0`}>
         <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900 text-sm">Setores</h2>
           {isAdmin && (
@@ -179,8 +179,8 @@ export default function Processos() {
         </nav>
       </div>
 
-      {/* Conteúdo principal */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Conteúdo principal — oculta no mobile quando nenhum setor selecionado */}
+      <div className={`${!setorAtivo ? 'hidden lg:flex' : 'flex'} flex-1 overflow-y-auto flex-col`}>
         {!setorAtivo ? (
           <div className="flex items-center justify-center h-full text-gray-400">
             <div className="text-center">
@@ -189,33 +189,36 @@ export default function Processos() {
             </div>
           </div>
         ) : (
-          <div className="p-6">
+          <div className="p-4 lg:p-6">
             {/* Header do setor */}
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-4 h-4 rounded-full mt-1" style={{ backgroundColor: setorAtivo.cor }} />
-                <div>
-                  <h1 className="text-xl font-bold text-gray-900">{setorAtivo.nome}</h1>
-                  {setorAtivo.descricao && <p className="text-sm text-gray-500 mt-0.5">{setorAtivo.descricao}</p>}
+            <div className="flex items-start justify-between mb-6 gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <button onClick={() => setSetorAtivo(null)} className="lg:hidden p-1.5 hover:bg-gray-100 rounded-lg text-gray-500 shrink-0">
+                  <ChevronLeft size={18} />
+                </button>
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: setorAtivo.cor }} />
+                <div className="min-w-0">
+                  <h1 className="text-lg lg:text-xl font-bold text-gray-900 truncate">{setorAtivo.nome}</h1>
+                  {setorAtivo.descricao && <p className="text-xs lg:text-sm text-gray-500 mt-0.5">{setorAtivo.descricao}</p>}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5 shrink-0">
                 {isAdmin && (
                   <>
-                    <button onClick={() => setShowGerenciarSetor(true)} className="btn-secondary flex items-center gap-1.5 text-sm">
-                      <Users size={14} /> Acesso
+                    <button onClick={() => setShowGerenciarSetor(true)} className="btn-secondary flex items-center gap-1 text-xs px-2 py-1.5">
+                      <Users size={12} /> <span className="hidden sm:inline">Acesso</span>
                     </button>
-                    <button onClick={abrirEditarSetor} className="p-2 hover:bg-gray-100 rounded-lg text-gray-500">
-                      <Pencil size={15} />
+                    <button onClick={abrirEditarSetor} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-500">
+                      <Pencil size={14} />
                     </button>
-                    <button onClick={() => deletarSetor(setorAtivo.id)} className="p-2 hover:bg-red-50 rounded-lg text-red-400">
-                      <Trash2 size={15} />
+                    <button onClick={() => deletarSetor(setorAtivo.id)} className="p-1.5 hover:bg-red-50 rounded-lg text-red-400">
+                      <Trash2 size={14} />
                     </button>
                   </>
                 )}
                 {isAdmin && (
-                  <button onClick={abrirNovoProcesso} className="btn-primary flex items-center gap-2 text-sm">
-                    <Plus size={14} /> Novo processo
+                  <button onClick={abrirNovoProcesso} className="btn-primary flex items-center gap-1 text-xs px-2.5 py-1.5">
+                    <Plus size={13} /> Novo
                   </button>
                 )}
               </div>
