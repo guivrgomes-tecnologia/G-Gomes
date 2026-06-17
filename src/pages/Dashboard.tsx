@@ -187,7 +187,7 @@ export default function Dashboard() {
             {/* Coluna direita: prioridades + stats */}
             <div className="lg:col-span-2 flex flex-col gap-4">
             {/* Pendências alta prioridade */}
-            <div className="card overflow-hidden self-start w-1/2">
+            <div className="card overflow-hidden self-start w-full">
               <div className="flex items-center justify-between px-4 py-3 border-b border-red-100 bg-red-50">
                 <h2 className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
                   <Flame size={14} /> Alta prioridade
