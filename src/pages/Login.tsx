@@ -31,7 +31,7 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
             <Building2 size={32} className="text-brand-600" />
           </div>
-          <h1 className="text-3xl font-bold text-white">Brasil Lar</h1>
+          <h1 className="text-3xl font-bold text-white">G Gomes</h1>
           <p className="text-brand-200 mt-1">Gestão Interna</p>
         </div>
 

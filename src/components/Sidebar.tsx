@@ -26,7 +26,7 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
             <Building2 size={20} />
           </div>
           <div>
-            <p className="font-bold text-sm leading-tight">Brasil Lar</p>
+            <p className="font-bold text-sm leading-tight">G Gomes</p>
             <p className="text-brand-300 text-xs">Gestão Interna</p>
           </div>
         </div>

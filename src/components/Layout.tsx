@@ -33,7 +33,7 @@ export default function Layout() {
           <button onClick={() => setMenuAberto(true)} className="p-1.5 hover:bg-brand-800 rounded-lg">
             <Menu size={22} />
           </button>
-          <span className="font-bold text-sm">Brasil Lar</span>
+          <span className="font-bold text-sm">G Gomes</span>
         </div>
 
         <Outlet />

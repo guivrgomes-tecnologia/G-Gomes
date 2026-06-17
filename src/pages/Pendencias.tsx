@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Plus, X, AlertCircle, ChevronDown, ArrowRight } from 'lucide-react'
-import { supabase, Pendencia, Profile } from '../lib/supabase'
+import { supabase, Pendencia, Profile, Setor } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_LABELS: Record<Pendencia['status'], string> = {
@@ -19,9 +19,9 @@ const PRIO_COLORS: Record<Pendencia['prioridade'], string> = {
 
 type FormState = {
   titulo: string; descricao: string; status: Pendencia['status']
-  prioridade: Pendencia['prioridade']; para_usuario_id: string; prazo: string
+  prioridade: Pendencia['prioridade']; para_usuario_id: string; prazo: string; setor_id: string
 }
-const FORM_INITIAL: FormState = { titulo: '', descricao: '', status: 'aberta', prioridade: 'media', para_usuario_id: '', prazo: '' }
+const FORM_INITIAL: FormState = { titulo: '', descricao: '', status: 'aberta', prioridade: 'media', para_usuario_id: '', prazo: '', setor_id: '' }
 
 type Aba = 'comigo' | 'minhas' | 'todas'
 
@@ -29,21 +29,25 @@ export default function Pendencias() {
   const { user } = useAuth()
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
+  const [setores, setSetores] = useState<Setor[]>([])
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
   const [aba, setAba] = useState<Aba>('comigo')
   const [expandido, setExpandido] = useState<string | null>(null)
+  const [filtroSetor, setFiltroSetor] = useState<string>('')
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
-    const [{ data: pends }, { data: perfis }] = await Promise.all([
-      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*)').order('created_at', { ascending: false }),
+    const [{ data: pends }, { data: perfis }, { data: setsData }] = await Promise.all([
+      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('nome'),
+      supabase.from('setores').select('*').order('nome'),
     ])
     setPendencias(pends ?? [])
     setEquipe(perfis ?? [])
+    setSetores(setsData ?? [])
   }
 
   async function salvar() {
@@ -56,6 +60,7 @@ export default function Pendencias() {
       prioridade: form.prioridade,
       de_usuario_id: user!.id,
       para_usuario_id: form.para_usuario_id,
+      setor_id: form.setor_id || null,
       prazo: form.prazo || null,
       criado_por: user!.id,
     })
@@ -77,9 +82,13 @@ export default function Pendencias() {
   }
 
   const lista = pendencias.filter(p => {
-    if (aba === 'comigo') return p.para_usuario_id === user?.id && p.status !== 'resolvida'
-    if (aba === 'minhas') return p.de_usuario_id === user?.id
-    return true
+    const matchAba = aba === 'comigo'
+      ? p.para_usuario_id === user?.id && p.status !== 'resolvida'
+      : aba === 'minhas'
+      ? p.de_usuario_id === user?.id
+      : true
+    const matchSetor = filtroSetor === '' || p.setor_id === filtroSetor
+    return matchAba && matchSetor
   })
 
   const isAtrasado = (p: Pendencia) => p.prazo && new Date(p.prazo) < new Date() && p.status !== 'resolvida'
@@ -95,7 +104,7 @@ export default function Pendencias() {
         </button>
       </div>
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {([['comigo', 'Comigo'], ['minhas', 'Minhas'], ['todas', 'Todas']] as [Aba, string][]).map(([val, label]) => (
           <button
             key={val}
@@ -108,6 +117,17 @@ export default function Pendencias() {
             )}
           </button>
         ))}
+
+        {setores.length > 0 && (
+          <select
+            className="input text-sm py-1.5 ml-auto"
+            value={filtroSetor}
+            onChange={e => setFiltroSetor(e.target.value)}
+          >
+            <option value="">Todos os setores</option>
+            {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -120,6 +140,7 @@ export default function Pendencias() {
         {lista.map(pend => {
           const de = pend.de_usuario as Profile | undefined
           const para = pend.para_usuario as Profile | undefined
+          const setor = pend.setor as Setor | undefined
           return (
             <div key={pend.id} className={`card overflow-hidden ${isAtrasado(pend) ? 'border-red-300' : ''}`}>
               <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => setExpandido(expandido === pend.id ? null : pend.id)}>
@@ -136,6 +157,11 @@ export default function Pendencias() {
                         <span className="font-medium text-gray-700">{de.nome.split(' ')[0]}</span>
                         <ArrowRight size={10} />
                         <span className="font-medium text-gray-700">{para.nome.split(' ')[0]}</span>
+                      </span>
+                    )}
+                    {setor && (
+                      <span className="badge" style={{ backgroundColor: setor.cor + '22', color: setor.cor }}>
+                        {setor.nome}
                       </span>
                     )}
                     {pend.prazo && <span className="badge bg-gray-100 text-gray-600">📅 {new Date(pend.prazo).toLocaleDateString('pt-BR')}</span>}
@@ -190,7 +216,7 @@ export default function Pendencias() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Para quem *</label>
                   <select className="input" value={form.para_usuario_id} onChange={e => setForm(f => ({ ...f, para_usuario_id: e.target.value }))}>
                     <option value="">Selecionar...</option>
-                    {equipe.filter(p => p.id !== user?.id).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    {equipe.map(p => <option key={p.id} value={p.id}>{p.nome}{p.id === user?.id ? ' (eu)' : ''}</option>)}
                   </select>
                 </div>
                 <div>
@@ -202,9 +228,18 @@ export default function Pendencias() {
                   </select>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prazo</label>
-                <input type="date" className="input" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Setor</label>
+                  <select className="input" value={form.setor_id} onChange={e => setForm(f => ({ ...f, setor_id: e.target.value }))}>
+                    <option value="">Nenhum</option>
+                    {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prazo</label>
+                  <input type="date" className="input" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))} />
+                </div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">

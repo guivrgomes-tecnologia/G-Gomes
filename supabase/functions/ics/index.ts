@@ -69,10 +69,10 @@ Deno.serve(async (req) => {
   const linhas: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Brasil Lar//Agenda//PT',
+    'PRODID:-//G Gomes//Agenda//PT',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'X-WR-CALNAME:Brasil Lar',
+    'X-WR-CALNAME:G Gomes',
     'X-WR-TIMEZONE:America/Sao_Paulo',
   ]
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, ClipboardList, AlertCircle, TrendingUp, Clock } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send } from 'lucide-react'
 import { supabase, Evento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -7,9 +7,8 @@ import { Link, useNavigate } from 'react-router-dom'
 type Stats = {
   eventosAmanha: number
   eventosSemana: number
-  processosAbertos: number
   pendenciasMinhas: number
-  processosAtrasados: number
+  pendenciasEnviadas: number
 }
 
 export default function Dashboard() {
@@ -67,29 +66,26 @@ export default function Dashboard() {
       .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
     setEventosHoje(todosHoje)
 
-    const [evAmanha, evSemana, proc, pend, atras] = await Promise.all([
+    const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', segStr).lte('data_inicio', domStr + 'T23:59:59'),
-      supabase.from('processos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'em_andamento']),
       supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
-      supabase.from('processos').select('id', { count: 'exact', head: true }).in('status', ['pendente', 'em_andamento']).lt('prazo', today),
+      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
     ])
     setStats({
       eventosAmanha:      evAmanha.count ?? 0,
       eventosSemana:      evSemana.count ?? 0,
-      processosAbertos:   proc.count ?? 0,
       pendenciasMinhas:   pend.count ?? 0,
-      processosAtrasados: atras.count ?? 0,
+      pendenciasEnviadas: pendEnv.count ?? 0,
     })
     setLoading(false)
   }
 
   const cards = [
-    { label: 'Eventos amanhã',      value: stats.eventosAmanha,     icon: Calendar,     color: 'bg-indigo-50 text-indigo-600', link: '/agenda' },
-    { label: 'Eventos esta semana', value: stats.eventosSemana,     icon: Calendar,     color: 'bg-sky-50 text-sky-600',       link: '/agenda?view=semana' },
-    { label: 'Processos em aberto', value: stats.processosAbertos,  icon: ClipboardList,color: 'bg-yellow-50 text-yellow-600', link: '/processos' },
-    { label: 'Pendências comigo',   value: stats.pendenciasMinhas,  icon: AlertCircle,  color: 'bg-red-50 text-red-600',       link: '/pendencias' },
-    { label: 'Processos atrasados', value: stats.processosAtrasados,icon: TrendingUp,   color: 'bg-orange-50 text-orange-600', link: '/processos' },
+    { label: 'Eventos amanhã',      value: stats.eventosAmanha,      icon: Calendar,    color: 'bg-indigo-50 text-indigo-600', link: '/agenda' },
+    { label: 'Eventos esta semana', value: stats.eventosSemana,      icon: Calendar,    color: 'bg-sky-50 text-sky-600',       link: '/agenda?view=semana' },
+    { label: 'Pendências comigo',   value: stats.pendenciasMinhas,   icon: AlertCircle, color: 'bg-red-50 text-red-600',       link: '/pendencias' },
+    { label: 'Minhas pendências',   value: stats.pendenciasEnviadas, icon: Send,        color: 'bg-purple-50 text-purple-600', link: '/pendencias?aba=minhas' },
   ]
 
   return (

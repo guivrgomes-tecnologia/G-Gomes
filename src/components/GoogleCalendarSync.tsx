@@ -61,7 +61,7 @@ export default function GoogleCalendarSync({ onClose }: { onClose: () => void })
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
               <p className="font-medium mb-1">Como funciona</p>
-              <p>Seus eventos do Brasil Lar aparecem automaticamente no Google Calendar. O Google sincroniza a cada ~12h, ou você pode forçar manualmente.</p>
+              <p>Seus eventos do G Gomes aparecem automaticamente no Google Calendar. O Google sincroniza a cada ~12h, ou você pode forçar manualmente.</p>
             </div>
 
             <div>

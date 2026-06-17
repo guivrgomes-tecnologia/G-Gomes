@@ -43,6 +43,15 @@ export type Processo = {
   responsavel?: Profile
 }
 
+export type Setor = {
+  id: string
+  nome: string
+  descricao: string | null
+  cor: string
+  criado_por: string | null
+  created_at: string
+}
+
 export type Pendencia = {
   id: string
   titulo: string
@@ -51,10 +60,12 @@ export type Pendencia = {
   prioridade: 'baixa' | 'media' | 'alta'
   de_usuario_id: string
   para_usuario_id: string
+  setor_id: string | null
   prazo: string | null
   criado_por: string
   created_at: string
   updated_at: string
   de_usuario?: Profile
   para_usuario?: Profile
+  setor?: Setor
 }
