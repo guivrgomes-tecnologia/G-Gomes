@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus, Video } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin } from 'lucide-react'
 import { supabase, Evento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [loading, setLoading] = useState(true)
+  const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
 
   useEffect(() => {
     if (profile) load()
@@ -28,10 +29,8 @@ export default function Dashboard() {
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
     }
     const today = localDate(now)
-
     const amanha = new Date(now); amanha.setDate(now.getDate() + 1)
     const amanhaStr = localDate(amanha)
-
     const diaSemana = now.getDay()
     const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana
     const seg = new Date(now); seg.setDate(now.getDate() + diffSeg)
@@ -39,35 +38,23 @@ export default function Dashboard() {
     const segStr = localDate(seg)
     const domStr = localDate(dom)
 
-    // Eventos de hoje (criados por mim ou onde sou participante)
     const { data: meusHoje } = await supabase
-      .from('eventos')
-      .select('*')
-      .gte('data_inicio', today)
-      .lte('data_inicio', today + 'T23:59:59')
-      .order('data_inicio')
+      .from('eventos').select('*')
+      .gte('data_inicio', today).lte('data_inicio', today + 'T23:59:59').order('data_inicio')
 
     const { data: participacoes } = await supabase
-      .from('evento_participantes')
-      .select('evento_id')
-      .eq('usuario_id', user!.id)
+      .from('evento_participantes').select('evento_id').eq('usuario_id', user!.id)
 
     const idsParticipando = (participacoes ?? []).map((p: any) => p.evento_id)
     let extrasHoje: Evento[] = []
     if (idsParticipando.length > 0) {
-      const { data } = await supabase
-        .from('eventos')
-        .select('*')
-        .in('id', idsParticipando)
-        .gte('data_inicio', today)
-        .lte('data_inicio', today + 'T23:59:59')
+      const { data } = await supabase.from('eventos').select('*')
+        .in('id', idsParticipando).gte('data_inicio', today).lte('data_inicio', today + 'T23:59:59')
       const meusIds = new Set((meusHoje ?? []).map(e => e.id))
       extrasHoje = (data ?? []).filter(e => !meusIds.has(e.id))
     }
 
-    const todosHoje = [...(meusHoje ?? []), ...extrasHoje]
-      .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
-    setEventosHoje(todosHoje)
+    setEventosHoje([...(meusHoje ?? []), ...extrasHoje].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
 
     const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
@@ -82,6 +69,13 @@ export default function Dashboard() {
       pendenciasEnviadas: pendEnv.count ?? 0,
     })
     setLoading(false)
+  }
+
+  async function toggleConcluido(ev: Evento) {
+    await supabase.from('eventos').update({ concluido: !ev.concluido }).eq('id', ev.id)
+    const updated = { ...ev, concluido: !ev.concluido }
+    setEventosHoje(prev => prev.map(e => e.id === ev.id ? updated : e))
+    setEventoAtivo(updated)
   }
 
   const cards = [
@@ -152,7 +146,6 @@ export default function Dashboard() {
                 </h2>
                 <Link to="/agenda" className="text-sm text-brand-600 hover:underline">Ver agenda →</Link>
               </div>
-
               {eventosHoje.length === 0 ? (
                 <p className="px-5 py-6 text-sm text-gray-400 text-center">Nenhum evento hoje</p>
               ) : (
@@ -162,8 +155,7 @@ export default function Dashboard() {
                       ? 'Dia inteiro'
                       : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                     return (
-                      <li key={ev.id}
-                        onClick={() => navigate('/agenda')}
+                      <li key={ev.id} onClick={() => setEventoAtivo(ev)}
                         className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
                         <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
                         <div className="flex-1 min-w-0">
@@ -194,6 +186,59 @@ export default function Dashboard() {
                   <p className="text-sm text-gray-500 mt-1">{label}</p>
                 </Link>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal detalhe do evento */}
+      {eventoAtivo && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEventoAtivo(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: eventoAtivo.cor }} />
+                <h3 className={`font-semibold text-gray-900 text-lg leading-tight ${eventoAtivo.concluido ? 'line-through text-gray-400' : ''}`}>
+                  {eventoAtivo.titulo}
+                </h3>
+              </div>
+              <button onClick={() => setEventoAtivo(null)} className="text-gray-400 hover:text-gray-600 ml-2 shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2 mb-5">
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Clock size={14} className="text-gray-400" />
+                {eventoAtivo.dia_inteiro
+                  ? 'Dia inteiro'
+                  : new Date(eventoAtivo.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    + (eventoAtivo.data_fim ? ' – ' + new Date(eventoAtivo.data_fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '')
+                }
+              </div>
+              {eventoAtivo.descricao && (
+                <div className="flex items-start gap-2 text-sm text-gray-600">
+                  <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                  <span>{eventoAtivo.descricao}</span>
+                </div>
+              )}
+              {eventoAtivo.concluido && (
+                <div className="flex items-center gap-2 text-sm text-green-600">
+                  <CheckCircle2 size={14} /> Concluído
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => toggleConcluido(eventoAtivo)}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${eventoAtivo.concluido ? 'border-gray-300 text-gray-600 hover:bg-gray-50' : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'}`}>
+                <CheckCircle2 size={15} />
+                {eventoAtivo.concluido ? 'Desmarcar' : 'Concluir'}
+              </button>
+              <button onClick={() => { setEventoAtivo(null); navigate('/agenda') }}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+                <Calendar size={15} /> Ver na agenda
+              </button>
             </div>
           </div>
         </div>
