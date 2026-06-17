@@ -147,7 +147,7 @@ export default function Dashboard() {
           </div>
 
           {/* Layout: calendário + stats */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* Eventos hoje */}
             <div className="card overflow-hidden lg:col-span-2">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -184,51 +184,50 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Pendências alta prioridade */}
+            <div className="card overflow-hidden lg:col-span-1 self-start">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-red-100 bg-red-50">
+                <h2 className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
+                  <Flame size={14} /> Alta prioridade
+                  {pendenciasAlta.length > 0 && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">{pendenciasAlta.length}</span>}
+                </h2>
+                <Link to="/pendencias" className="text-xs text-red-500 hover:underline"><ArrowRight size={13} /></Link>
+              </div>
+              {pendenciasAlta.length === 0 ? (
+                <p className="px-4 py-5 text-xs text-gray-400 text-center">Nenhuma pendência urgente</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {pendenciasAlta.map(p => {
+                    const euSouDest = p.para_usuario_id === profile?.id
+                    return (
+                      <li key={p.id} onClick={() => navigate('/pendencias')}
+                        className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
+                          <p className="text-xs text-gray-400 truncate">
+                            {euSouDest ? `De: ${(p.de_usuario as any)?.nome?.split(' ')[0]}` : `Para: ${(p.para_usuario as any)?.nome?.split(' ')[0]}`}
+                          </p>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+
             {/* Cards de estatísticas */}
-            <div className="lg:col-span-3 grid grid-cols-2 gap-4 content-start">
+            <div className="lg:col-span-2 grid grid-cols-2 gap-4 content-start">
               {cards.map(({ label, value, icon: Icon, color, link }) => (
-                <Link key={label} to={link} className="card p-6 hover:shadow-md transition-shadow">
-                  <div className={`inline-flex p-2.5 rounded-lg ${color} mb-4`}>
-                    <Icon size={20} />
+                <Link key={label} to={link} className="card p-5 hover:shadow-md transition-shadow">
+                  <div className={`inline-flex p-2 rounded-lg ${color} mb-3`}>
+                    <Icon size={18} />
                   </div>
-                  <p className="text-3xl font-bold text-gray-900">{value}</p>
-                  <p className="text-sm text-gray-500 mt-1">{label}</p>
+                  <p className="text-2xl font-bold text-gray-900">{value}</p>
+                  <p className="text-xs text-gray-500 mt-1">{label}</p>
                 </Link>
               ))}
             </div>
           </div>
-
-          {/* Pendências alta prioridade */}
-          {pendenciasAlta.length > 0 && (
-            <div className="card overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-red-100 bg-red-50">
-                <h2 className="font-semibold text-red-700 flex items-center gap-2">
-                  <Flame size={16} /> Prioridade alta
-                  <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{pendenciasAlta.length}</span>
-                </h2>
-                <Link to="/pendencias" className="text-sm text-red-600 hover:underline flex items-center gap-1">Ver todas <ArrowRight size={13} /></Link>
-              </div>
-              <ul className="divide-y divide-gray-100">
-                {pendenciasAlta.map(p => {
-                  const euSouDest = p.para_usuario_id === profile?.id
-                  return (
-                    <li key={p.id} onClick={() => navigate('/pendencias')}
-                      className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{p.titulo}</p>
-                        <p className="text-xs text-gray-400 truncate">
-                          {euSouDest ? `De: ${(p.de_usuario as any)?.nome?.split(' ')[0]}` : `Para: ${(p.para_usuario as any)?.nome?.split(' ')[0]}`}
-                        </p>
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${p.status === 'aberta' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {p.status === 'aberta' ? 'A resolver' : 'Em andamento'}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 
