@@ -477,8 +477,14 @@ export default function Pendencias() {
                         <div className="flex items-start gap-2">
                           <p className="text-sm text-purple-900 flex-1 whitespace-pre-wrap">{pend.solucao || 'Solução registrada.'}</p>
                           {euSouDestinatario && (
-                            <button onClick={() => { setEditandoSolucao(pend.id); setSolucaoTexto(prev => ({ ...prev, [pend.id]: pend.solucao ?? '' })) }}
-                              className="text-purple-400 hover:text-purple-700 shrink-0"><Pencil size={13} /></button>
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={() => { setEditandoSolucao(pend.id); setSolucaoTexto(prev => ({ ...prev, [pend.id]: pend.solucao ?? '' })) }}
+                                className="text-purple-400 hover:text-purple-700"><Pencil size={13} /></button>
+                              <button onClick={async () => {
+                                await supabase.from('pendencias').update({ solucao: null, status: 'em_andamento' }).eq('id', pend.id)
+                                setPendencias(prev => prev.map(p => p.id === pend.id ? { ...p, solucao: null, status: 'em_andamento' } : p))
+                              }} className="text-purple-400 hover:text-red-600"><Trash2 size={13} /></button>
+                            </div>
                           )}
                         </div>
                       )}
