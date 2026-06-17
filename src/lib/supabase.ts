@@ -68,7 +68,8 @@ export type Pendencia = {
   id: string
   titulo: string
   descricao: string | null
-  status: 'aberta' | 'em_andamento' | 'resolvida'
+  status: 'aberta' | 'em_andamento' | 'solucao_apresentada' | 'resolvida'
+  solucao: string | null
   prioridade: 'baixa' | 'media' | 'alta'
   de_usuario_id: string
   para_usuario_id: string

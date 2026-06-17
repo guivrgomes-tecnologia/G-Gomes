@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus, Pencil, CheckSquare, Square, Trash2 } from 'lucide-react'
+import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus, Pencil, CheckSquare, Square, Trash2, Lightbulb } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor, PendenciaTarefa } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams } from 'react-router-dom'
 
 const STATUS_LABELS: Record<Pendencia['status'], string> = {
-  aberta: 'Aberta', em_andamento: 'Em andamento', resolvida: 'Resolvida',
+  aberta: 'A resolver',
+  em_andamento: 'Em andamento',
+  solucao_apresentada: 'Solução apresentada',
+  resolvida: 'Resolvida',
 }
 const STATUS_COLORS: Record<Pendencia['status'], string> = {
   aberta: 'bg-red-100 text-red-700',
   em_andamento: 'bg-blue-100 text-blue-700',
+  solucao_apresentada: 'bg-purple-100 text-purple-700',
   resolvida: 'bg-green-100 text-green-700',
 }
 const PRIO_COLORS: Record<Pendencia['prioridade'], string> = {
@@ -17,6 +21,7 @@ const PRIO_COLORS: Record<Pendencia['prioridade'], string> = {
   media: 'bg-yellow-100 text-yellow-700',
   alta: 'bg-red-100 text-red-700',
 }
+const STATUS_ORDER: Pendencia['status'][] = ['aberta', 'em_andamento', 'solucao_apresentada', 'resolvida']
 
 type FormState = {
   titulo: string; descricao: string; status: Pendencia['status']
@@ -29,6 +34,7 @@ const FORM_INITIAL: FormState = {
 }
 
 type Aba = 'comigo' | 'minhas' | 'todas'
+type FiltroStatus = 'todos' | Pendencia['status']
 
 function Avatar({ nome }: { nome: string }) {
   return (
@@ -88,6 +94,7 @@ export default function Pendencias() {
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
   const [aba, setAba] = useState<Aba>('comigo')
+  const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>('todos')
   const [expandido, setExpandido] = useState<string | null>(null)
   const [filtroSetor, setFiltroSetor] = useState<string>('')
   const [criandoEvento, setCriandoEvento] = useState<string | null>(null)
@@ -95,6 +102,9 @@ export default function Pendencias() {
   const [editForm, setEditForm] = useState<FormState>(FORM_INITIAL)
   const [novasTarefas, setNovasTarefas] = useState<Record<string, string>>({})
   const [tarefasExpandidas, setTarefasExpandidas] = useState<Record<string, PendenciaTarefa[]>>({})
+  // Solução
+  const [solucaoTexto, setSolucaoTexto] = useState<Record<string, string>>({})
+  const [editandoSolucao, setEditandoSolucao] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -197,6 +207,17 @@ export default function Pendencias() {
     loadData()
   }
 
+  async function salvarSolucao(pend: Pendencia) {
+    const texto = (solucaoTexto[pend.id] ?? pend.solucao ?? '').trim()
+    await supabase.from('pendencias').update({
+      solucao: texto || null,
+      status: 'solucao_apresentada',
+      updated_at: new Date().toISOString(),
+    }).eq('id', pend.id)
+    setEditandoSolucao(null)
+    loadData()
+  }
+
   async function deletar(id: string) {
     if (!confirm('Deletar esta pendência?')) return
     await supabase.from('pendencias').delete().eq('id', id)
@@ -220,14 +241,25 @@ export default function Pendencias() {
 
   const lista = pendencias.filter(p => {
     const matchAba = aba === 'comigo'
-      ? isParticipante(p) && p.status !== 'resolvida'
+      ? isParticipante(p)
       : aba === 'minhas' ? p.de_usuario_id === user?.id : true
     const matchSetor = filtroSetor === '' || p.setor_id === filtroSetor
-    return matchAba && matchSetor
+    const matchStatus = filtroStatus === 'todos' || p.status === filtroStatus
+    return matchAba && matchSetor && matchStatus
   })
 
   const isAtrasado = (p: Pendencia) => p.prazo && new Date(p.prazo) < new Date() && p.status !== 'resolvida'
   const countComigo = pendencias.filter(p => isParticipante(p) && p.status !== 'resolvida').length
+
+  // Contagens por status para a aba atual
+  const countsPorStatus = STATUS_ORDER.reduce((acc, s) => {
+    acc[s] = pendencias.filter(p => {
+      const matchAba = aba === 'comigo' ? isParticipante(p) : aba === 'minhas' ? p.de_usuario_id === user?.id : true
+      const matchSetor = filtroSetor === '' || p.setor_id === filtroSetor
+      return matchAba && matchSetor && p.status === s
+    }).length
+    return acc
+  }, {} as Record<string, number>)
 
   function formatPrazo(prazo: string) {
     const d = new Date(prazo)
@@ -272,8 +304,9 @@ export default function Pendencias() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select className="input" value={f.status} onChange={e => setF(p => ({ ...p, status: e.target.value as Pendencia['status'] }))}>
-                  <option value="aberta">Aberta</option>
+                  <option value="aberta">A resolver</option>
                   <option value="em_andamento">Em andamento</option>
+                  <option value="solucao_apresentada">Solução apresentada</option>
                   <option value="resolvida">Resolvida</option>
                 </select>
               </div>
@@ -334,7 +367,8 @@ export default function Pendencias() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      {/* Abas */}
+      <div className="flex flex-wrap gap-2 mb-4">
         {([['comigo', 'Comigo'], ['minhas', 'Minhas'], ['todas', 'Todas']] as [Aba, string][]).map(([val, label]) => (
           <button key={val} onClick={() => setAba(val)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${aba === val ? 'bg-brand-600 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>
@@ -352,6 +386,20 @@ export default function Pendencias() {
         )}
       </div>
 
+      {/* Filtros de status */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button onClick={() => setFiltroStatus('todos')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${filtroStatus === 'todos' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+          Todos ({Object.values(countsPorStatus).reduce((a, b) => a + b, 0)})
+        </button>
+        {STATUS_ORDER.map(s => (
+          <button key={s} onClick={() => setFiltroStatus(filtroStatus === s ? 'todos' : s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${filtroStatus === s ? `${STATUS_COLORS[s]} border-transparent` : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+            {STATUS_LABELS[s]} ({countsPorStatus[s] ?? 0})
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-3">
         {lista.length === 0 && (
           <div className="card p-12 text-center text-gray-400">
@@ -367,13 +415,17 @@ export default function Pendencias() {
             ? participantes.map((p: any) => p.profile).filter(Boolean)
             : (pend.para_usuario ? [pend.para_usuario as Profile] : [])
           const euSouDestinatario = isParticipante(pend)
+          const podeDarSolucao = euSouDestinatario && pend.status !== 'resolvida'
 
           return (
             <div key={pend.id} className={`card overflow-hidden ${isAtrasado(pend) ? 'border-red-300' : ''}`}>
               <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => {
                 const abrindo = expandido !== pend.id
                 setExpandido(abrindo ? pend.id : null)
-                if (abrindo) recarregarTarefas(pend.id)
+                if (abrindo) {
+                  recarregarTarefas(pend.id)
+                  if (pend.solucao) setSolucaoTexto(prev => ({ ...prev, [pend.id]: pend.solucao! }))
+                }
               }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -387,17 +439,12 @@ export default function Pendencias() {
                       <span className="flex items-center gap-1 text-xs text-gray-500">
                         <span className="font-medium text-gray-700">{de.nome.split(' ')[0]}</span>
                         <ArrowRight size={10} />
-                        <span className="font-medium text-gray-700">
-                          {destinatarios.map(p => p.nome.split(' ')[0]).join(', ')}
-                        </span>
+                        <span className="font-medium text-gray-700">{destinatarios.map(p => p.nome.split(' ')[0]).join(', ')}</span>
                       </span>
                     )}
-                    {setor && (
-                      <span className="badge" style={{ backgroundColor: setor.cor + '22', color: setor.cor }}>{setor.nome}</span>
-                    )}
-                    {pend.prazo && (
-                      <span className="badge bg-gray-100 text-gray-600">📅 {formatPrazo(pend.prazo)}</span>
-                    )}
+                    {setor && <span className="badge" style={{ backgroundColor: setor.cor + '22', color: setor.cor }}>{setor.nome}</span>}
+                    {pend.prazo && <span className="badge bg-gray-100 text-gray-600">📅 {formatPrazo(pend.prazo)}</span>}
+                    {pend.solucao && <span className="badge bg-purple-100 text-purple-700 flex items-center gap-1"><Lightbulb size={10} /> Solução</span>}
                   </div>
                 </div>
                 <ChevronDown size={16} className={`text-gray-400 mt-1 transition-transform ${expandido === pend.id ? 'rotate-180' : ''}`} />
@@ -406,6 +453,55 @@ export default function Pendencias() {
               {expandido === pend.id && (
                 <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
                   {pend.descricao && <p className="text-sm text-gray-600">{pend.descricao}</p>}
+
+                  {/* Solução apresentada */}
+                  {(pend.status === 'solucao_apresentada' || pend.solucao) && (
+                    <div className="rounded-lg border border-purple-200 bg-purple-50 p-3">
+                      <p className="text-xs font-semibold text-purple-700 flex items-center gap-1.5 mb-2">
+                        <Lightbulb size={13} /> Solução apresentada
+                      </p>
+                      {editandoSolucao === pend.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            className="w-full text-sm border border-purple-300 rounded-lg p-2 resize-none focus:outline-none focus:border-purple-500 min-h-[80px] bg-white"
+                            value={solucaoTexto[pend.id] ?? pend.solucao ?? ''}
+                            onChange={e => setSolucaoTexto(prev => ({ ...prev, [pend.id]: e.target.value }))}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => setEditandoSolucao(null)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
+                            <button onClick={() => salvarSolucao(pend)} className="text-xs py-1.5 flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors">Salvar solução</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2">
+                          <p className="text-sm text-purple-900 flex-1 whitespace-pre-wrap">{pend.solucao || 'Solução registrada.'}</p>
+                          {euSouDestinatario && (
+                            <button onClick={() => { setEditandoSolucao(pend.id); setSolucaoTexto(prev => ({ ...prev, [pend.id]: pend.solucao ?? '' })) }}
+                              className="text-purple-400 hover:text-purple-700 shrink-0"><Pencil size={13} /></button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Campo para apresentar solução */}
+                  {podeDarSolucao && pend.status !== 'solucao_apresentada' && editandoSolucao === pend.id && (
+                    <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-purple-700 flex items-center gap-1.5"><Lightbulb size={13} /> Apresentar solução</p>
+                      <textarea
+                        className="w-full text-sm border border-purple-300 rounded-lg p-2 resize-none focus:outline-none focus:border-purple-500 min-h-[80px] bg-white"
+                        placeholder="Descreva a solução encontrada..."
+                        value={solucaoTexto[pend.id] ?? ''}
+                        onChange={e => setSolucaoTexto(prev => ({ ...prev, [pend.id]: e.target.value }))}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditandoSolucao(null)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
+                        <button onClick={() => salvarSolucao(pend)} className="text-xs py-1.5 flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors">Salvar solução</button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Lista de tarefas */}
                   <div>
@@ -444,9 +540,7 @@ export default function Pendencias() {
                               onKeyDown={e => e.key === 'Enter' && adicionarTarefa(pend.id)}
                             />
                             {(novasTarefas[pend.id] ?? '').trim() && (
-                              <button onClick={() => adicionarTarefa(pend.id)} className="text-xs text-brand-600 font-medium hover:underline">
-                                Adicionar
-                              </button>
+                              <button onClick={() => adicionarTarefa(pend.id)} className="text-xs text-brand-600 font-medium hover:underline">Adicionar</button>
                             )}
                           </div>
                         </div>
@@ -455,9 +549,17 @@ export default function Pendencias() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {(['aberta', 'em_andamento', 'resolvida'] as Pendencia['status'][]).map(s => (
-                      <button key={s} disabled={pend.status === s} onClick={() => atualizarStatus(pend.id, s)}
-                        className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${pend.status === s ? 'bg-gray-100 text-gray-400 cursor-default' : 'border-gray-200 hover:bg-gray-50 text-gray-600'}`}>
+                    {/* Botão apresentar solução */}
+                    {podeDarSolucao && pend.status !== 'solucao_apresentada' && editandoSolucao !== pend.id && (
+                      <button onClick={() => { setEditandoSolucao(pend.id); setSolucaoTexto(prev => ({ ...prev, [pend.id]: '' })) }}
+                        className="text-xs px-2.5 py-1 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 flex items-center gap-1 transition-colors">
+                        <Lightbulb size={12} /> Apresentar solução
+                      </button>
+                    )}
+                    {/* Mudança de status */}
+                    {STATUS_ORDER.filter(s => s !== pend.status && s !== 'solucao_apresentada').map(s => (
+                      <button key={s} onClick={() => atualizarStatus(pend.id, s)}
+                        className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors">
                         → {STATUS_LABELS[s]}
                       </button>
                     ))}
@@ -478,29 +580,18 @@ export default function Pendencias() {
                   </div>
                 </div>
               )}
-
             </div>
           )
         })}
       </div>
 
       {showModal && (
-        <FormModal
-          title="Nova Pendência"
-          f={form}
-          setF={setForm}
-          onSave={salvar}
-          onClose={() => { setShowModal(false); setForm(FORM_INITIAL) }}
-        />
+        <FormModal title="Nova Pendência" f={form} setF={setForm} onSave={salvar}
+          onClose={() => { setShowModal(false); setForm(FORM_INITIAL) }} />
       )}
       {editando && (
-        <FormModal
-          title="Editar Pendência"
-          f={editForm}
-          setF={setEditForm}
-          onSave={salvarEdicao}
-          onClose={() => setEditando(null)}
-        />
+        <FormModal title="Editar Pendência" f={editForm} setF={setEditForm} onSave={salvarEdicao}
+          onClose={() => setEditando(null)} />
       )}
     </div>
   )
