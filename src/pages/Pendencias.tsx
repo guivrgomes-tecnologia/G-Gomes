@@ -241,7 +241,7 @@ export default function Pendencias() {
   async function salvar() {
     if (!form.titulo || form.para_usuario_ids.length === 0) return
     setSaving(true)
-    const prazoSalvo = form.prazo ? (form.hora ? `${form.prazo}T${form.hora}` : form.prazo) : null
+    const prazoSalvo = form.prazo ? (form.hora ? localToISO(`${form.prazo}T${form.hora}`) : form.prazo) : null
     const { data: inserted, error } = await supabase.from('pendencias').insert({
       titulo: form.titulo, descricao: form.descricao || null,
       status: form.status, prioridade: form.prioridade,
@@ -285,7 +285,7 @@ export default function Pendencias() {
   async function salvarEdicao() {
     if (!editando || !editForm.titulo || editForm.para_usuario_ids.length === 0) return
     setSaving(true)
-    const prazoSalvo = editForm.prazo ? (editForm.hora ? `${editForm.prazo}T${editForm.hora}` : editForm.prazo) : null
+    const prazoSalvo = editForm.prazo ? (editForm.hora ? localToISO(`${editForm.prazo}T${editForm.hora}`) : editForm.prazo) : null
     await supabase.from('pendencias').update({
       titulo: editForm.titulo, descricao: editForm.descricao || null,
       status: editForm.status, prioridade: editForm.prioridade,
@@ -367,8 +367,8 @@ export default function Pendencias() {
     return matchAba && matchSetor && matchStatus
   })
 
-  // datas sem hora (ex: "2026-06-17") precisam de T12:00 para não virarem dia anterior no UTC-3
-  function parsePrazo(prazo: string) { return new Date(prazo.includes('T') ? prazo : prazo + 'T12:00:00') }
+  // datas sem hora: atrasado só após fim do dia; com hora: usa o datetime exato (já salvo em UTC)
+  function parsePrazo(prazo: string) { return new Date(prazo.includes('T') ? prazo : prazo + 'T23:59:59') }
   const isAtrasado = (p: Pendencia) => p.prazo && parsePrazo(p.prazo) < new Date() && p.status !== 'resolvida'
   const countComigo = pendencias.filter(p => isParticipante(p) && p.status !== 'resolvida').length
 
@@ -383,7 +383,7 @@ export default function Pendencias() {
   }, {} as Record<string, number>)
 
   function formatPrazo(prazo: string) {
-    const d = parsePrazo(prazo)
+    const d = prazo.includes('T') ? new Date(prazo) : new Date(prazo + 'T12:00:00')
     return prazo.includes('T')
       ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       : d.toLocaleDateString('pt-BR')
