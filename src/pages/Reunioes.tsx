@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ReuniaPasta, Reuniao, Pendencia, Profile } from '../lib/supabase'
-import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy, ClipboardList, ChevronDown, ExternalLink } from 'lucide-react'
+import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy, ClipboardList, ChevronDown, ExternalLink, Users } from 'lucide-react'
 
 const CORES = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
@@ -18,6 +18,11 @@ export default function Reunioes() {
   const [showPautasFixas, setShowPautasFixas] = useState(false)
   const [editPautasFixas, setEditPautasFixas] = useState('')
   const [copiado, setCopiado] = useState(false)
+
+  // Participantes
+  const [participantes, setParticipantes] = useState<Profile[]>([])
+  const [showAddParticipante, setShowAddParticipante] = useState(false)
+  const [participanteParaAdicionar, setParticipanteParaAdicionar] = useState('')
 
   // Pendências vinculadas
   const [pendenciasVinculadas, setPendenciasVinculadas] = useState<Pendencia[]>([])
@@ -52,6 +57,14 @@ export default function Reunioes() {
   const loadReunioes = useCallback(async (pastaId: string) => {
     const { data } = await supabase.from('reunioes').select('*').eq('pasta_id', pastaId).order('created_at', { ascending: false })
     setReunioes(data ?? [])
+  }, [])
+
+  const loadParticipantes = useCallback(async (reuniaoId: string) => {
+    const { data } = await supabase
+      .from('reuniao_participantes')
+      .select('usuario_id, profile:profiles(*)')
+      .eq('reuniao_id', reuniaoId)
+    setParticipantes((data ?? []).map((d: any) => d.profile).filter(Boolean))
   }, [])
 
   const loadPendenciasVinculadas = useCallback(async (reuniaoId: string) => {
@@ -144,7 +157,10 @@ export default function Reunioes() {
     setEditData(d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '')
     setEditHora(d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '')
     setEditandoCabecalho(false)
+    setShowAddParticipante(false)
+    setParticipanteParaAdicionar('')
     loadPendenciasVinculadas(r.id)
+    loadParticipantes(r.id)
   }
 
   async function salvarReuniao() {
@@ -232,6 +248,20 @@ export default function Reunioes() {
     setFormPendencia({ titulo: '', para_usuario_id: '', prioridade: 'media' })
     setShowNovaPendencia(false)
     setSaving(false)
+  }
+
+  async function adicionarParticipante() {
+    if (!reuniaoAberta || !participanteParaAdicionar) return
+    await supabase.from('reuniao_participantes').insert({ reuniao_id: reuniaoAberta.id, usuario_id: participanteParaAdicionar })
+    setParticipanteParaAdicionar('')
+    setShowAddParticipante(false)
+    await loadParticipantes(reuniaoAberta.id)
+  }
+
+  async function removerParticipante(usuarioId: string) {
+    if (!reuniaoAberta) return
+    await supabase.from('reuniao_participantes').delete().eq('reuniao_id', reuniaoAberta.id).eq('usuario_id', usuarioId)
+    await loadParticipantes(reuniaoAberta.id)
   }
 
   function abrirWhatsApp() {
@@ -527,6 +557,47 @@ export default function Reunioes() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Participantes */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <Users size={15} /> Participantes
+                </h2>
+                <button onClick={() => setShowAddParticipante(v => !v)}
+                  className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition-colors flex items-center gap-1">
+                  <Plus size={12} /> Adicionar
+                </button>
+              </div>
+              {showAddParticipante && (
+                <div className="mb-3 flex gap-2">
+                  <select className="input text-sm flex-1" value={participanteParaAdicionar}
+                    onChange={e => setParticipanteParaAdicionar(e.target.value)}>
+                    <option value="">Selecione um usuário...</option>
+                    {equipe.filter(p => p.id !== user!.id && !participantes.find(pt => pt.id === p.id)).map(p => (
+                      <option key={p.id} value={p.id}>{p.nome}</option>
+                    ))}
+                  </select>
+                  <button onClick={adicionarParticipante} disabled={!participanteParaAdicionar}
+                    className="btn-primary text-xs py-1.5 px-3">Confirmar</button>
+                  <button onClick={() => setShowAddParticipante(false)} className="btn-secondary text-xs py-1.5 px-3">Cancelar</button>
+                </div>
+              )}
+              {participantes.length === 0 ? (
+                <p className="text-xs text-gray-400">Nenhum participante adicionado</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {participantes.map(p => (
+                    <div key={p.id} className="flex items-center gap-1.5 bg-gray-100 rounded-full px-3 py-1 text-sm text-gray-700">
+                      <span>{p.nome.split(' ')[0]}</span>
+                      <button onClick={() => removerParticipante(p.id)} className="text-gray-400 hover:text-red-500 ml-1">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Ações */}
