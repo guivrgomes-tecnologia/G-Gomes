@@ -79,4 +79,5 @@ export type Pendencia = {
   de_usuario?: Profile
   para_usuario?: Profile
   setor?: Setor
+  pendencia_participantes?: { usuario_id: string; profile: Profile }[]
 }
