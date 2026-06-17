@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string
+  || 'BI5eBznlH1ccu96BPWaXA-s2dtZ_8PR31G9xmeL25aKLdfR5F54tn-YtiPQFlfnZXynGINxgCc0J_agWiv_Q8Qs'
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
