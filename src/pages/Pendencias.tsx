@@ -21,11 +21,11 @@ const PRIO_COLORS: Record<Pendencia['prioridade'], string> = {
 type FormState = {
   titulo: string; descricao: string; status: Pendencia['status']
   prioridade: Pendencia['prioridade']; para_usuario_ids: string[]
-  prazo: string; hora: string; setor_id: string; criar_evento: boolean
+  prazo: string; hora: string; setor_id: string; criar_evento: boolean; reuniao_id: string
 }
 const FORM_INITIAL: FormState = {
   titulo: '', descricao: '', status: 'aberta', prioridade: 'media',
-  para_usuario_ids: [], prazo: '', hora: '', setor_id: '', criar_evento: false,
+  para_usuario_ids: [], prazo: '', hora: '', setor_id: '', criar_evento: false, reuniao_id: '',
 }
 
 type Aba = 'comigo' | 'minhas' | 'todas'
@@ -83,6 +83,7 @@ export default function Pendencias() {
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
+  const [reunioes, setReunioes] = useState<{ id: string; titulo: string; pasta?: { nome: string } }[]>([])
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
@@ -102,14 +103,16 @@ export default function Pendencias() {
   }, [])
 
   async function loadData() {
-    const [{ data: pends }, { data: perfis }, { data: setsData }] = await Promise.all([
+    const [{ data: pends }, { data: perfis }, { data: setsData }, { data: reunData }] = await Promise.all([
       supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*), pendencia_participantes(usuario_id, profile:profiles(*)), pendencia_tarefas(*)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('nome'),
       supabase.from('setores').select('*').order('nome'),
+      supabase.from('reunioes').select('id, titulo, pasta:reuniao_pastas(nome)').order('created_at', { ascending: false }),
     ])
     setPendencias(pends ?? [])
     setEquipe(perfis ?? [])
     setSetores(setsData ?? [])
+    setReunioes((reunData ?? []) as any)
   }
 
   async function salvar() {
@@ -125,6 +128,9 @@ export default function Pendencias() {
 
     if (inserted) {
       await salvarParticipantes(inserted.id, form.para_usuario_ids)
+      if (form.reuniao_id) {
+        await supabase.from('reuniao_pendencias').insert({ reuniao_id: form.reuniao_id, pendencia_id: inserted.id })
+      }
     }
 
     if (form.criar_evento && form.prazo && inserted) {
@@ -142,7 +148,7 @@ export default function Pendencias() {
     setEditForm({
       titulo: pend.titulo, descricao: pend.descricao ?? '', status: pend.status,
       prioridade: pend.prioridade, para_usuario_ids: ids,
-      prazo: prazoBase, hora: horaBase, setor_id: pend.setor_id ?? '', criar_evento: false,
+      prazo: prazoBase, hora: horaBase, setor_id: pend.setor_id ?? '', criar_evento: false, reuniao_id: '',
     })
     setEditando(pend)
   }
@@ -300,6 +306,13 @@ export default function Pendencias() {
                 </div>
               </label>
             )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vincular a uma reunião <span className="text-gray-400 font-normal">(opcional)</span></label>
+              <select className="input" value={f.reuniao_id} onChange={e => setF(p => ({ ...p, reuniao_id: e.target.value }))}>
+                <option value="">Nenhuma</option>
+                {reunioes.map(r => <option key={r.id} value={r.id}>{(r.pasta as any)?.nome ? `${(r.pasta as any).nome} · ` : ''}{r.titulo}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-3 mt-6">
             <button onClick={onClose} className="btn-secondary flex-1">Cancelar</button>

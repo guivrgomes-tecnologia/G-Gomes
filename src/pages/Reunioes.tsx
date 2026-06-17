@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { ReuniaPasta, Reuniao } from '../lib/supabase'
-import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy } from 'lucide-react'
+import { ReuniaPasta, Reuniao, Pendencia, Profile } from '../lib/supabase'
+import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy, ClipboardList, ChevronDown, ExternalLink } from 'lucide-react'
 
 const CORES = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
@@ -13,6 +13,20 @@ export default function Reunioes() {
   const [reunioes, setReunioes] = useState<Reuniao[]>([])
   const [reuniaoAberta, setReuniaoAberta] = useState<Reuniao | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Pautas fixas
+  const [showPautasFixas, setShowPautasFixas] = useState(false)
+  const [editPautasFixas, setEditPautasFixas] = useState('')
+  const [copiado, setCopiado] = useState(false)
+
+  // Pendências vinculadas
+  const [pendenciasVinculadas, setPendenciasVinculadas] = useState<Pendencia[]>([])
+  const [todasPendencias, setTodasPendencias] = useState<Pendencia[]>([])
+  const [equipe, setEquipe] = useState<Profile[]>([])
+  const [showLinkPendencia, setShowLinkPendencia] = useState(false)
+  const [showNovaPendencia, setShowNovaPendencia] = useState(false)
+  const [formPendencia, setFormPendencia] = useState({ titulo: '', para_usuario_id: '', prioridade: 'media' as 'baixa' | 'media' | 'alta' })
+  const [pendenciaParaLinkar, setPendenciaParaLinkar] = useState('')
 
   const [showNovaPasta, setShowNovaPasta] = useState(false)
   const [showNovaReuniao, setShowNovaReuniao] = useState(false)
@@ -40,12 +54,34 @@ export default function Reunioes() {
     setReunioes(data ?? [])
   }, [])
 
+  const loadPendenciasVinculadas = useCallback(async (reuniaoId: string) => {
+    const { data } = await supabase
+      .from('reuniao_pendencias')
+      .select('pendencia_id, pendencia:pendencias(*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*))')
+      .eq('reuniao_id', reuniaoId)
+    setPendenciasVinculadas((data ?? []).map((d: any) => d.pendencia).filter(Boolean))
+  }, [])
+
   useEffect(() => { loadPastas() }, [loadPastas])
 
   useEffect(() => {
-    if (pastaSelecionada) loadReunioes(pastaSelecionada.id)
-    else setReunioes([])
+    if (pastaSelecionada) {
+      loadReunioes(pastaSelecionada.id)
+      setEditPautasFixas(pastaSelecionada.pautas_fixas ?? '')
+    } else {
+      setReunioes([])
+    }
   }, [pastaSelecionada, loadReunioes])
+
+  useEffect(() => {
+    if (!user) return
+    supabase.from('profiles').select('*').then(({ data }) => setEquipe(data ?? []))
+    supabase.from('pendencias')
+      .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*)')
+      .neq('status', 'resolvida')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setTodasPendencias(data ?? []))
+  }, [user])
 
   async function criarPasta() {
     if (!nomePasta.trim()) return
@@ -63,6 +99,20 @@ export default function Reunioes() {
     await loadPastas()
   }
 
+  async function salvarPautasFixas() {
+    if (!pastaSelecionada) return
+    await supabase.from('reuniao_pastas').update({ pautas_fixas: editPautasFixas || null }).eq('id', pastaSelecionada.id)
+    setPastaSelecionada({ ...pastaSelecionada, pautas_fixas: editPautasFixas || null })
+    await loadPastas()
+  }
+
+  function copiarPautasFixas() {
+    if (!editPautasFixas) return
+    navigator.clipboard.writeText(editPautasFixas)
+    setCopiado(true)
+    setTimeout(() => setCopiado(false), 2000)
+  }
+
   async function criarReuniao() {
     if (!formReuniao.titulo.trim() || !pastaSelecionada) return
     setSaving(true)
@@ -73,11 +123,8 @@ export default function Reunioes() {
         : formReuniao.data
     }
     const { data: inserted } = await supabase.from('reunioes').insert({
-      titulo: formReuniao.titulo.trim(),
-      data,
-      tipo: formReuniao.tipo,
-      pasta_id: pastaSelecionada.id,
-      criado_por: user!.id,
+      titulo: formReuniao.titulo.trim(), data, tipo: formReuniao.tipo,
+      pasta_id: pastaSelecionada.id, criado_por: user!.id,
     }).select().single()
     setFormReuniao({ titulo: '', data: '', hora: '', tipo: 'presencial' })
     setShowNovaReuniao(false)
@@ -97,6 +144,7 @@ export default function Reunioes() {
     setEditData(d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '')
     setEditHora(d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '')
     setEditandoCabecalho(false)
+    loadPendenciasVinculadas(r.id)
   }
 
   async function salvarReuniao() {
@@ -104,17 +152,12 @@ export default function Reunioes() {
     setSaving(true)
     let data: string | null = null
     if (editData) {
-      data = editHora
-        ? new Date(`${editData}T${editHora}`).toISOString()
-        : editData
+      data = editHora ? new Date(`${editData}T${editHora}`).toISOString() : editData
     }
     const { data: updated } = await supabase.from('reunioes').update({
-      titulo: editTitulo,
-      data,
-      tipo: editTipo,
+      titulo: editTitulo, data, tipo: editTipo,
       link_video: editTipo === 'online' ? (editLinkVideo || null) : null,
-      pauta: editPauta || null,
-      transcricao: editTranscricao || null,
+      pauta: editPauta || null, transcricao: editTranscricao || null,
       updated_at: new Date().toISOString(),
     }).eq('id', reuniaoAberta.id).select().single()
     setEditandoCabecalho(false)
@@ -128,13 +171,9 @@ export default function Reunioes() {
     setSaving(true)
     const dataInicio = reuniaoAberta.data ?? new Date().toISOString()
     const { data: ev } = await supabase.from('eventos').insert({
-      titulo: reuniaoAberta.titulo,
-      descricao: reuniaoAberta.pauta || null,
-      data_inicio: dataInicio,
-      dia_inteiro: !reuniaoAberta.data?.includes('T'),
-      cor: pastaSelecionada.cor,
-      concluido: false,
-      criado_por: user!.id,
+      titulo: reuniaoAberta.titulo, descricao: reuniaoAberta.pauta || null,
+      data_inicio: dataInicio, dia_inteiro: !reuniaoAberta.data?.includes('T'),
+      cor: pastaSelecionada.cor, concluido: false, criado_por: user!.id,
     }).select('id').single()
     if (ev) {
       await supabase.from('reunioes').update({ evento_id: ev.id }).eq('id', reuniaoAberta.id)
@@ -148,11 +187,8 @@ export default function Reunioes() {
     if (!reuniaoAberta || !pastaSelecionada) return
     setSaving(true)
     const { data: nova } = await supabase.from('reunioes').insert({
-      titulo: `${reuniaoAberta.titulo} (cópia)`,
-      pasta_id: reuniaoAberta.pasta_id,
-      tipo: reuniaoAberta.tipo,
-      link_video: reuniaoAberta.link_video,
-      criado_por: user!.id,
+      titulo: `${reuniaoAberta.titulo} (cópia)`, pasta_id: reuniaoAberta.pasta_id,
+      tipo: reuniaoAberta.tipo, link_video: reuniaoAberta.link_video, criado_por: user!.id,
     }).select().single()
     await loadReunioes(pastaSelecionada.id)
     if (nova) abrirReuniao(nova)
@@ -166,10 +202,36 @@ export default function Reunioes() {
     if (pastaSelecionada) await loadReunioes(pastaSelecionada.id)
   }
 
-  function formatData(iso: string | null) {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  async function linkarPendencia() {
+    if (!reuniaoAberta || !pendenciaParaLinkar) return
+    await supabase.from('reuniao_pendencias').insert({ reuniao_id: reuniaoAberta.id, pendencia_id: pendenciaParaLinkar })
+    setPendenciaParaLinkar('')
+    setShowLinkPendencia(false)
+    await loadPendenciasVinculadas(reuniaoAberta.id)
+  }
+
+  async function deslinkarPendencia(pendenciaId: string) {
+    if (!reuniaoAberta) return
+    await supabase.from('reuniao_pendencias').delete().eq('reuniao_id', reuniaoAberta.id).eq('pendencia_id', pendenciaId)
+    await loadPendenciasVinculadas(reuniaoAberta.id)
+  }
+
+  async function criarPendenciaNaReuniao() {
+    if (!reuniaoAberta || !formPendencia.titulo.trim() || !formPendencia.para_usuario_id) return
+    setSaving(true)
+    const { data: pend } = await supabase.from('pendencias').insert({
+      titulo: formPendencia.titulo.trim(), status: 'aberta',
+      prioridade: formPendencia.prioridade,
+      de_usuario_id: user!.id, para_usuario_id: formPendencia.para_usuario_id,
+      criado_por: user!.id,
+    }).select().single()
+    if (pend) {
+      await supabase.from('reuniao_pendencias').insert({ reuniao_id: reuniaoAberta.id, pendencia_id: pend.id })
+      await loadPendenciasVinculadas(reuniaoAberta.id)
+    }
+    setFormPendencia({ titulo: '', para_usuario_id: '', prioridade: 'media' })
+    setShowNovaPendencia(false)
+    setSaving(false)
   }
 
   function abrirWhatsApp() {
@@ -183,6 +245,14 @@ export default function Reunioes() {
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
+  function formatData(iso: string | null) {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  const prioridadeCor: Record<string, string> = { baixa: 'bg-green-100 text-green-700', media: 'bg-yellow-100 text-yellow-700', alta: 'bg-red-100 text-red-700' }
+  const pendenciasNaoVinculadas = todasPendencias.filter(p => !pendenciasVinculadas.find(v => v.id === p.id))
+
   return (
     <div className="flex h-full min-h-screen bg-gray-50">
       {/* Painel de pastas */}
@@ -194,16 +264,12 @@ export default function Reunioes() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
-          {pastas.length === 0 && (
-            <p className="text-sm text-gray-400 px-4 py-3">Nenhuma pasta ainda.</p>
-          )}
+          {pastas.length === 0 && <p className="text-sm text-gray-400 px-4 py-3">Nenhuma pasta ainda.</p>}
           {pastas.map(p => (
             <div key={p.id} className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 rounded-lg mx-1"
               style={{ borderLeft: pastaSelecionada?.id === p.id ? `3px solid ${p.cor}` : '3px solid transparent' }}
               onClick={() => setPastaSelecionada(pastaSelecionada?.id === p.id ? null : p)}>
-              <span style={{ color: p.cor }}>
-                {pastaSelecionada?.id === p.id ? <FolderOpen size={16} /> : <Folder size={16} />}
-              </span>
+              <span style={{ color: p.cor }}>{pastaSelecionada?.id === p.id ? <FolderOpen size={16} /> : <Folder size={16} />}</span>
               <span className="flex-1 text-sm text-gray-700 truncate">{p.nome}</span>
               <button onClick={e => { e.stopPropagation(); deletarPasta(p.id) }}
                 className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity">
@@ -232,13 +298,36 @@ export default function Reunioes() {
                 <Plus size={18} />
               </button>
             </div>
+
+            {/* Pautas fixas */}
+            <div className="border-b border-gray-100">
+              <button onClick={() => setShowPautasFixas(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                <span className="flex items-center gap-2"><ClipboardList size={14} /> Pautas fixas</span>
+                <ChevronDown size={14} className={`transition-transform ${showPautasFixas ? 'rotate-180' : ''}`} />
+              </button>
+              {showPautasFixas && (
+                <div className="px-4 pb-3 space-y-2">
+                  <textarea
+                    className="w-full text-xs text-gray-700 border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:border-brand-400 min-h-[100px]"
+                    placeholder="Pautas recorrentes desta categoria..."
+                    value={editPautasFixas}
+                    onChange={e => setEditPautasFixas(e.target.value)}
+                    onBlur={salvarPautasFixas}
+                  />
+                  <button onClick={copiarPautasFixas} disabled={!editPautasFixas}
+                    className="w-full text-xs py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                    <Copy size={12} /> {copiado ? 'Copiado!' : 'Copiar pautas'}
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex-1 overflow-y-auto py-2">
               {reunioes.length === 0 && (
                 <div className="text-center py-8">
                   <p className="text-sm text-gray-400 mb-3">Nenhuma reunião ainda.</p>
-                  <button onClick={() => setShowNovaReuniao(true)} className="text-sm text-brand-600 hover:underline">
-                    + Nova reunião
-                  </button>
+                  <button onClick={() => setShowNovaReuniao(true)} className="text-sm text-brand-600 hover:underline">+ Nova reunião</button>
                 </div>
               )}
               {reunioes.map(r => (
@@ -256,8 +345,7 @@ export default function Reunioes() {
                   <div className="flex items-center gap-2 mt-1">
                     {r.tipo === 'online'
                       ? <span className="text-xs text-blue-500 flex items-center gap-0.5"><Video size={11} /> Online</span>
-                      : <span className="text-xs text-gray-400 flex items-center gap-0.5"><MapPin size={11} /> Presencial</span>
-                    }
+                      : <span className="text-xs text-gray-400 flex items-center gap-0.5"><MapPin size={11} /> Presencial</span>}
                     {r.evento_id && <span className="text-xs text-green-600">✓ Agenda</span>}
                   </div>
                 </div>
@@ -279,8 +367,7 @@ export default function Reunioes() {
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <div className="flex items-start justify-between mb-3">
                 {editandoCabecalho ? (
-                  <input className="input text-lg font-semibold flex-1 mr-3"
-                    value={editTitulo} onChange={e => setEditTitulo(e.target.value)} />
+                  <input className="input text-lg font-semibold flex-1 mr-3" value={editTitulo} onChange={e => setEditTitulo(e.target.value)} />
                 ) : (
                   <h1 className="text-xl font-bold text-gray-900 flex-1">{reuniaoAberta.titulo}</h1>
                 )}
@@ -288,12 +375,10 @@ export default function Reunioes() {
                   <Edit2 size={16} />
                 </button>
               </div>
-
               <div className="flex flex-wrap gap-4 text-sm">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Categoria</label>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium text-white"
-                    style={{ backgroundColor: pastaSelecionada?.cor }}>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium text-white" style={{ backgroundColor: pastaSelecionada?.cor }}>
                     {pastaSelecionada?.nome}
                   </span>
                 </div>
@@ -328,13 +413,10 @@ export default function Reunioes() {
                   )}
                 </div>
               </div>
-
-              {/* Link videochamada */}
               {editandoCabecalho && editTipo === 'online' && (
                 <div className="mt-3">
                   <label className="text-xs text-gray-500 block mb-1">Link da videochamada</label>
-                  <input className="input text-sm" placeholder="https://meet.google.com/..." value={editLinkVideo}
-                    onChange={e => setEditLinkVideo(e.target.value)} />
+                  <input className="input text-sm" placeholder="https://meet.google.com/..." value={editLinkVideo} onChange={e => setEditLinkVideo(e.target.value)} />
                 </div>
               )}
               {!editandoCabecalho && reuniaoAberta.tipo === 'online' && reuniaoAberta.link_video && (
@@ -345,7 +427,6 @@ export default function Reunioes() {
                   </a>
                 </div>
               )}
-
               {editandoCabecalho && (
                 <div className="flex gap-2 mt-4">
                   <button onClick={() => setEditandoCabecalho(false)} className="btn-secondary text-sm py-1.5">Cancelar</button>
@@ -357,13 +438,95 @@ export default function Reunioes() {
             {/* Pauta */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">Pauta / Organização</h2>
-              <textarea
-                className="w-full text-sm text-gray-700 resize-none focus:outline-none min-h-[160px]"
+              <textarea className="w-full text-sm text-gray-700 resize-none focus:outline-none min-h-[160px]"
                 placeholder="Organize os tópicos da reunião aqui..."
-                value={editPauta}
-                onChange={e => setEditPauta(e.target.value)}
-                onBlur={salvarReuniao}
-              />
+                value={editPauta} onChange={e => setEditPauta(e.target.value)} onBlur={salvarReuniao} />
+            </div>
+
+            {/* Pendências */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <ClipboardList size={15} /> Pendências da reunião
+                </h2>
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowLinkPendencia(true); setShowNovaPendencia(false) }}
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+                    Vincular existente
+                  </button>
+                  <button onClick={() => { setShowNovaPendencia(true); setShowLinkPendencia(false) }}
+                    className="text-xs px-2.5 py-1.5 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition-colors flex items-center gap-1">
+                    <Plus size={12} /> Nova
+                  </button>
+                </div>
+              </div>
+
+              {/* Vincular existente */}
+              {showLinkPendencia && (
+                <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+                  <select className="input text-sm" value={pendenciaParaLinkar} onChange={e => setPendenciaParaLinkar(e.target.value)}>
+                    <option value="">Selecione uma pendência...</option>
+                    {pendenciasNaoVinculadas.map(p => (
+                      <option key={p.id} value={p.id}>{p.titulo}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowLinkPendencia(false)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
+                    <button onClick={linkarPendencia} disabled={!pendenciaParaLinkar} className="btn-primary text-xs py-1.5 flex-1">Vincular</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Nova pendência */}
+              {showNovaPendencia && (
+                <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+                  <input className="input text-sm" placeholder="Título da pendência *" value={formPendencia.titulo}
+                    onChange={e => setFormPendencia(f => ({ ...f, titulo: e.target.value }))} autoFocus />
+                  <select className="input text-sm" value={formPendencia.para_usuario_id}
+                    onChange={e => setFormPendencia(f => ({ ...f, para_usuario_id: e.target.value }))}>
+                    <option value="">Para quem? *</option>
+                    {equipe.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                  <select className="input text-sm" value={formPendencia.prioridade}
+                    onChange={e => setFormPendencia(f => ({ ...f, prioridade: e.target.value as any }))}>
+                    <option value="baixa">Baixa prioridade</option>
+                    <option value="media">Média prioridade</option>
+                    <option value="alta">Alta prioridade</option>
+                  </select>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowNovaPendencia(false)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
+                    <button onClick={criarPendenciaNaReuniao} disabled={saving || !formPendencia.titulo.trim() || !formPendencia.para_usuario_id} className="btn-primary text-xs py-1.5 flex-1">Criar</button>
+                  </div>
+                </div>
+              )}
+
+              {pendenciasVinculadas.length === 0 && !showLinkPendencia && !showNovaPendencia && (
+                <p className="text-sm text-gray-400 py-2">Nenhuma pendência vinculada.</p>
+              )}
+              <div className="space-y-2">
+                {pendenciasVinculadas.map(p => (
+                  <div key={p.id} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50 group">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={`text-sm font-medium text-gray-800 ${p.status === 'resolvida' ? 'line-through text-gray-400' : ''}`}>{p.titulo}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${prioridadeCor[p.prioridade]}`}>{p.prioridade}</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {p.status === 'resolvida' ? '✓ Resolvida' : p.status === 'em_andamento' ? 'Em andamento' : 'Aberta'}
+                        {p.para_usuario && <> · Para: {(p.para_usuario as Profile).nome.split(' ')[0]}</>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a href="/pendencias" className="text-gray-400 hover:text-brand-600" title="Ver pendências">
+                        <ExternalLink size={13} />
+                      </a>
+                      <button onClick={() => deslinkarPendencia(p.id)} className="text-gray-400 hover:text-red-500" title="Desvincular">
+                        <X size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Ações */}
@@ -382,11 +545,11 @@ export default function Reunioes() {
                 )}
                 <button onClick={abrirWhatsApp}
                   className="flex items-center gap-2 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors">
-                  <MessageCircle size={15} /> Enviar lembrete no WhatsApp
+                  <MessageCircle size={15} /> Lembrete WhatsApp
                 </button>
                 <button onClick={duplicarReuniao} disabled={saving}
                   className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
-                  <Copy size={15} /> Duplicar reunião
+                  <Copy size={15} /> Duplicar
                 </button>
               </div>
             </div>
@@ -394,13 +557,9 @@ export default function Reunioes() {
             {/* Transcrição */}
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="text-sm font-semibold text-gray-700 mb-3">Transcrição</h2>
-              <textarea
-                className="w-full text-sm text-gray-700 resize-none focus:outline-none min-h-[200px]"
+              <textarea className="w-full text-sm text-gray-700 resize-none focus:outline-none min-h-[200px]"
                 placeholder="Cole ou escreva a transcrição da reunião aqui..."
-                value={editTranscricao}
-                onChange={e => setEditTranscricao(e.target.value)}
-                onBlur={salvarReuniao}
-              />
+                value={editTranscricao} onChange={e => setEditTranscricao(e.target.value)} onBlur={salvarReuniao} />
             </div>
           </div>
         )}
@@ -418,8 +577,7 @@ export default function Reunioes() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
                 <input className="input" placeholder="Ex: Comercial" value={nomePasta}
-                  onChange={e => setNomePasta(e.target.value)} autoFocus
-                  onKeyDown={e => e.key === 'Enter' && criarPasta()} />
+                  onChange={e => setNomePasta(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && criarPasta()} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Cor</label>
@@ -456,8 +614,7 @@ export default function Reunioes() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Categoria</label>
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium text-white"
-                  style={{ backgroundColor: pastaSelecionada.cor }}>
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium text-white" style={{ backgroundColor: pastaSelecionada.cor }}>
                   {pastaSelecionada.nome}
                 </span>
               </div>
@@ -477,13 +634,11 @@ export default function Reunioes() {
               <div className="flex gap-3">
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-                  <input type="date" className="input" value={formReuniao.data}
-                    onChange={e => setFormReuniao(f => ({ ...f, data: e.target.value }))} />
+                  <input type="date" className="input" value={formReuniao.data} onChange={e => setFormReuniao(f => ({ ...f, data: e.target.value }))} />
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
-                  <input type="time" className="input" value={formReuniao.hora}
-                    onChange={e => setFormReuniao(f => ({ ...f, hora: e.target.value }))} />
+                  <input type="time" className="input" value={formReuniao.hora} onChange={e => setFormReuniao(f => ({ ...f, hora: e.target.value }))} />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">

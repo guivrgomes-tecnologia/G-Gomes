@@ -88,6 +88,7 @@ export type ReuniaPasta = {
   id: string
   nome: string
   cor: string
+  pautas_fixas: string | null
   criado_por: string | null
   created_at: string
 }
