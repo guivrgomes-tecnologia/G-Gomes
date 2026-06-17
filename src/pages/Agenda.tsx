@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2 } from 'lucide-react'
-import { supabase, Evento, Profile } from '../lib/supabase'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag } from 'lucide-react'
+import { supabase, Evento, Profile, CategoriaEvento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams } from 'react-router-dom'
 import GoogleCalendarSync from '../components/GoogleCalendarSync'
 
-const CORES = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+const COR_PADRAO = '#0ea5e9'
+const CORES_PRESET = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#f97316','#14b8a6','#6366f1','#84cc16']
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const DIAS_SEMANA_ABREV = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 
@@ -14,12 +15,12 @@ type Recorrencia = 'nao' | 'diario' | 'semanal' | 'mensal' | 'anual'
 
 type FormState = {
   titulo: string; descricao: string; data_inicio: string; data_fim: string
-  dia_inteiro: boolean; cor: string; recorrencia: Recorrencia; recorrencia_ate: string
+  dia_inteiro: boolean; cor: string; categoria_id: string; recorrencia: Recorrencia; recorrencia_ate: string
   participantes: string[]
 }
 const FORM_INITIAL: FormState = {
   titulo: '', descricao: '', data_inicio: '', data_fim: '',
-  dia_inteiro: true, cor: CORES[0], recorrencia: 'nao', recorrencia_ate: '',
+  dia_inteiro: true, cor: COR_PADRAO, categoria_id: '', recorrencia: 'nao', recorrencia_ate: '',
   participantes: [],
 }
 
@@ -56,6 +57,10 @@ function formatDataHora(ev: Evento) {
   return `${inicio}, ${formatHora(ev.data_inicio)}${hf}`
 }
 
+function corDoEvento(ev: Evento): string {
+  return (ev.categoria as CategoriaEvento | undefined)?.cor ?? ev.cor ?? COR_PADRAO
+}
+
 function Avatar({ nome, size = 'sm' }: { nome: string; size?: 'sm' | 'md' }) {
   const s = size === 'sm' ? 'w-6 h-6 text-xs' : 'w-8 h-8 text-sm'
   return (
@@ -66,9 +71,10 @@ function Avatar({ nome, size = 'sm' }: { nome: string; size?: 'sm' | 'md' }) {
 }
 
 export default function Agenda() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [eventos, setEventos] = useState<Evento[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
+  const [categorias, setCategorias] = useState<CategoriaEvento[]>([])
   const [searchParams] = useSearchParams()
   const [view, setView] = useState<View>((searchParams.get('view') as View) ?? 'mes')
   const [hoje] = useState(new Date())
@@ -77,6 +83,7 @@ export default function Agenda() {
 
   const [showNovo, setShowNovo] = useState(false)
   const [showSync, setShowSync] = useState(false)
+  const [showCats, setShowCats] = useState(false)
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
 
@@ -85,19 +92,28 @@ export default function Agenda() {
   const [editForm, setEditForm] = useState<Partial<FormState>>({})
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
 
-  useEffect(() => { loadEventos(); loadEquipe() }, [cursor, view])
+  // gerenciar categorias
+  const [catNome, setCatNome] = useState('')
+  const [catCor, setCatCor] = useState(CORES_PRESET[0])
+  const [savingCat, setSavingCat] = useState(false)
+
+  useEffect(() => { loadEventos(); loadEquipe(); loadCategorias() }, [cursor, view])
 
   useEffect(() => {
     if (view === 'semana' && semanaRef.current) {
       const hora = new Date().getHours()
-      const alvo = Math.max(0, hora - 1)
-      semanaRef.current.scrollTop = alvo * 56
+      semanaRef.current.scrollTop = Math.max(0, hora - 1) * 56
     }
   }, [view])
 
   async function loadEquipe() {
     const { data } = await supabase.from('profiles').select('*').order('nome')
     setEquipe(data ?? [])
+  }
+
+  async function loadCategorias() {
+    const { data } = await supabase.from('categorias_evento').select('*').order('nome')
+    setCategorias(data ?? [])
   }
 
   async function loadEventos() {
@@ -112,19 +128,18 @@ export default function Agenda() {
       inicio = fim = toDateStr(cursor)
     }
 
-    // Eventos criados pelo usuário ou onde é participante
-    const { data: meus } = await supabase.from('eventos').select('*')
+    const { data: meus } = await supabase.from('eventos')
+      .select('*, categoria:categorias_evento(*)')
       .gte('data_inicio', inicio).lte('data_inicio', fim + 'T23:59:59').order('data_inicio')
 
     const { data: participando } = await supabase
-      .from('evento_participantes')
-      .select('evento_id')
-      .eq('usuario_id', user!.id)
+      .from('evento_participantes').select('evento_id').eq('usuario_id', user!.id)
 
     const idsParticipando = (participando ?? []).map(p => p.evento_id)
 
     if (idsParticipando.length > 0) {
-      const { data: eventosParticipando } = await supabase.from('eventos').select('*')
+      const { data: eventosParticipando } = await supabase.from('eventos')
+        .select('*, categoria:categorias_evento(*)')
         .in('id', idsParticipando)
         .gte('data_inicio', inicio).lte('data_inicio', fim + 'T23:59:59')
       const meusIds = new Set((meus ?? []).map(e => e.id))
@@ -137,9 +152,7 @@ export default function Agenda() {
 
   async function loadParticipantes(eventoId: string) {
     const { data } = await supabase
-      .from('evento_participantes')
-      .select('profile:profiles(*)')
-      .eq('evento_id', eventoId)
+      .from('evento_participantes').select('profile:profiles(*)').eq('evento_id', eventoId)
     setParticipantesAtivos((data ?? []).map((r: any) => r.profile))
   }
 
@@ -166,11 +179,21 @@ export default function Agenda() {
     loadParticipantes(ev.id)
   }
 
+  function aplicarCategoria(categoriaId: string, setF: (fn: (f: any) => any) => void) {
+    const cat = categorias.find(c => c.id === categoriaId)
+    setF(f => ({ ...f, categoria_id: categoriaId, cor: cat?.cor ?? f.cor }))
+  }
+
   async function salvarNovo() {
     if (!form.titulo || !form.data_inicio) return
     setSaving(true)
     const base = form.dia_inteiro ? form.data_inicio.split('T')[0] : form.data_inicio
-    const comum = { titulo: form.titulo, descricao: form.descricao || null, data_fim: form.data_fim || null, dia_inteiro: form.dia_inteiro, cor: form.cor, criado_por: user!.id, concluido: false }
+    const comum = {
+      titulo: form.titulo, descricao: form.descricao || null,
+      data_fim: form.data_fim || null, dia_inteiro: form.dia_inteiro,
+      cor: form.cor, categoria_id: form.categoria_id || null,
+      criado_por: user!.id, concluido: false,
+    }
 
     if (form.recorrencia !== 'nao' && form.recorrencia_ate) {
       const datas = gerarDatasRecorrentes(base, form.recorrencia, form.recorrencia_ate)
@@ -198,6 +221,7 @@ export default function Agenda() {
       data_fim:    editForm.data_fim    ?? eventoAtivo.data_fim,
       dia_inteiro: editForm.dia_inteiro ?? eventoAtivo.dia_inteiro,
       cor:         editForm.cor         ?? eventoAtivo.cor,
+      categoria_id: editForm.categoria_id !== undefined ? (editForm.categoria_id || null) : eventoAtivo.categoria_id,
     }).eq('id', eventoAtivo.id)
     await salvarParticipantes(eventoAtivo.id, editForm.participantes ?? participantesAtivos.map(p => p.id))
     setSaving(false); setEventoAtivo(null); loadEventos()
@@ -212,6 +236,21 @@ export default function Agenda() {
     if (!confirm('Deletar este evento?')) return
     await supabase.from('eventos').delete().eq('id', id)
     setEventoAtivo(null); loadEventos()
+  }
+
+  async function salvarCategoria() {
+    if (!catNome.trim()) return
+    setSavingCat(true)
+    await supabase.from('categorias_evento').insert({ nome: catNome.trim(), cor: catCor, criado_por: user!.id })
+    setCatNome(''); setCatCor(CORES_PRESET[0])
+    setSavingCat(false)
+    loadCategorias()
+  }
+
+  async function deletarCategoria(id: string) {
+    if (!confirm('Deletar esta categoria?')) return
+    await supabase.from('categorias_evento').delete().eq('id', id)
+    loadCategorias()
   }
 
   function navAnterior() {
@@ -266,12 +305,41 @@ export default function Agenda() {
     )
   }
 
+  function SeletorCategoria({ value, onChange }: { value: string; onChange: (id: string, cor: string) => void }) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+          <Tag size={14} /> Categoria <span className="text-gray-400 font-normal">(opcional)</span>
+        </label>
+        {categorias.length === 0 ? (
+          <p className="text-xs text-gray-400">Nenhuma categoria criada. Use o botão <strong>Categorias</strong> para criar.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => onChange('', COR_PADRAO)}
+              className={`px-3 py-1 rounded-full text-sm border transition-colors ${value === '' ? 'bg-gray-200 text-gray-800 border-gray-300' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              Nenhuma
+            </button>
+            {categorias.map(cat => (
+              <button key={cat.id} type="button" onClick={() => onChange(cat.id, cat.cor)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border transition-colors ${value === cat.id ? 'text-white' : 'text-gray-700 hover:opacity-80'}`}
+                style={value === cat.id ? { backgroundColor: cat.cor, borderColor: cat.cor } : { borderColor: cat.cor + '88' }}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cat.cor }} />
+                {cat.nome}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   function EventoChip({ ev, extraClass = '' }: { ev: Evento; extraClass?: string }) {
+    const cor = corDoEvento(ev)
     const ehParticipante = ev.criado_por !== user?.id
     return (
       <div onClick={e => abrirEvento(ev, e)}
         className={`text-xs px-1.5 py-0.5 rounded truncate text-white cursor-pointer hover:opacity-90 transition-opacity ${ev.concluido ? 'opacity-60' : ''} ${extraClass}`}
-        style={{ backgroundColor: ev.cor }} title={ev.titulo}>
+        style={{ backgroundColor: cor }} title={ev.titulo}>
         <span className={ev.concluido ? 'line-through' : ''}>
           {ehParticipante && <span className="mr-1 opacity-80">👥</span>}
           {!ev.dia_inteiro && <span className="opacity-80 mr-1">{formatHora(ev.data_inicio)}</span>}
@@ -281,7 +349,6 @@ export default function Agenda() {
     )
   }
 
-  // ── VIEW MÊS ──
   const HORAS = Array.from({ length: 24 }, (_, i) => i)
 
   function ViewMes() {
@@ -366,14 +433,17 @@ export default function Agenda() {
             <div key={h} onClick={() => abrirNovo(ds)} className={`flex border-b border-gray-100 min-h-[60px] cursor-pointer hover:bg-gray-50 transition-colors ${isCurrent ? 'bg-brand-50' : ''}`}>
               <div className="w-16 shrink-0 py-2 px-3 text-right text-xs text-gray-400 font-medium">{`${String(h).padStart(2,'0')}:00`}</div>
               <div className="flex-1 p-1.5 space-y-0.5">
-                {evs.map(ev => (
-                  <div key={ev.id} onClick={e => abrirEvento(ev, e)}
-                    className={`text-sm px-2 py-1 rounded text-white cursor-pointer hover:opacity-90 ${ev.concluido ? 'opacity-60' : ''}`}
-                    style={{ backgroundColor: ev.cor }}>
-                    <span className={ev.concluido ? 'line-through font-medium' : 'font-medium'}>{ev.titulo}</span>
-                    {ev.data_fim && <span className="opacity-80 ml-2 text-xs">{formatHora(ev.data_inicio)} – {formatHora(ev.data_fim)}</span>}
-                  </div>
-                ))}
+                {evs.map(ev => {
+                  const cor = corDoEvento(ev)
+                  return (
+                    <div key={ev.id} onClick={e => abrirEvento(ev, e)}
+                      className={`text-sm px-2 py-1 rounded text-white cursor-pointer hover:opacity-90 ${ev.concluido ? 'opacity-60' : ''}`}
+                      style={{ backgroundColor: cor }}>
+                      <span className={ev.concluido ? 'line-through font-medium' : 'font-medium'}>{ev.titulo}</span>
+                      {ev.data_fim && <span className="opacity-80 ml-2 text-xs">{formatHora(ev.data_inicio)} – {formatHora(ev.data_fim)}</span>}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )
@@ -387,13 +457,15 @@ export default function Agenda() {
     const ev = eventoAtivo
     const ef = editForm
     const idsEdit = ef.participantes ?? participantesAtivos.map(p => p.id)
+    const catAtiva = (ev.categoria as CategoriaEvento | undefined)
+    const corAtiva = corDoEvento(ev)
 
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ev.cor }} />
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: corAtiva }} />
               <h3 className="text-lg font-semibold">{editando ? 'Editar evento' : 'Evento'}</h3>
             </div>
             <button onClick={() => setEventoAtivo(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
@@ -405,8 +477,12 @@ export default function Agenda() {
                 <p className={`text-xl font-semibold text-gray-900 ${ev.concluido ? 'line-through text-gray-400' : ''}`}>{ev.titulo}</p>
                 <p className="text-sm text-gray-500 mt-1">{formatDataHora(ev)}</p>
               </div>
+              {catAtiva && (
+                <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium text-white" style={{ backgroundColor: catAtiva.cor }}>
+                  <Tag size={10} /> {catAtiva.nome}
+                </span>
+              )}
               {ev.descricao && <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">{ev.descricao}</p>}
-
               {participantesAtivos.length > 0 && (
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1"><Users size={12} /> Participantes</p>
@@ -420,7 +496,6 @@ export default function Agenda() {
                   </div>
                 </div>
               )}
-
               {ev.concluido && (
                 <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-2">
                   <CheckCircle2 size={16} /> Evento concluído
@@ -435,7 +510,7 @@ export default function Agenda() {
                 <div className="flex gap-2">
                   <button onClick={() => {
                     setEditando(true)
-                    setEditForm({ titulo: ev.titulo, descricao: ev.descricao ?? '', data_inicio: ev.data_inicio, data_fim: ev.data_fim ?? '', dia_inteiro: ev.dia_inteiro, cor: ev.cor, participantes: participantesAtivos.map(p => p.id) })
+                    setEditForm({ titulo: ev.titulo, descricao: ev.descricao ?? '', data_inicio: ev.data_inicio, data_fim: ev.data_fim ?? '', dia_inteiro: ev.dia_inteiro, cor: ev.cor, categoria_id: ev.categoria_id ?? '', participantes: participantesAtivos.map(p => p.id) })
                   }} className="btn-secondary flex-1 flex items-center justify-center gap-2">
                     <Pencil size={14} /> Editar
                   </button>
@@ -456,6 +531,10 @@ export default function Agenda() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
                 <textarea className="input resize-none" rows={2} value={ef.descricao ?? ''} onChange={e => setEditForm(f => ({ ...f, descricao: e.target.value }))} />
               </div>
+              <SeletorCategoria
+                value={ef.categoria_id ?? ev.categoria_id ?? ''}
+                onChange={(id, cor) => setEditForm(f => ({ ...f, categoria_id: id, cor }))}
+              />
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="edit_dia_inteiro" checked={ef.dia_inteiro ?? ev.dia_inteiro} onChange={e => setEditForm(f => ({ ...f, dia_inteiro: e.target.checked }))} />
                 <label htmlFor="edit_dia_inteiro" className="text-sm text-gray-700">Dia inteiro</label>
@@ -474,16 +553,6 @@ export default function Agenda() {
                   </div>
                 )}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Cor</label>
-                <div className="flex gap-2">
-                  {CORES.map(cor => (
-                    <button key={cor} onClick={() => setEditForm(f => ({ ...f, cor }))}
-                      className={`w-7 h-7 rounded-full transition-transform ${(ef.cor ?? ev.cor) === cor ? 'scale-125 ring-2 ring-offset-2 ring-gray-400' : ''}`}
-                      style={{ backgroundColor: cor }} />
-                  ))}
-                </div>
-              </div>
               <SeletorParticipantes selecionados={idsEdit} onChange={ids => setEditForm(f => ({ ...f, participantes: ids }))} />
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setEditando(false)} className="btn-secondary flex-1">Cancelar</button>
@@ -498,11 +567,60 @@ export default function Agenda() {
     )
   }
 
+  function ModalCategorias() {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="card w-full max-w-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2"><Tag size={18} /> Categorias</h3>
+            <button onClick={() => setShowCats(false)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+          </div>
+
+          <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+            {categorias.length === 0 && <p className="text-sm text-gray-400 text-center py-3">Nenhuma categoria ainda</p>}
+            {categorias.map(cat => (
+              <div key={cat.id} className="flex items-center gap-2 p-2 rounded-lg border border-gray-100">
+                <div className="w-5 h-5 rounded-full shrink-0" style={{ backgroundColor: cat.cor }} />
+                <span className="flex-1 text-sm text-gray-800">{cat.nome}</span>
+                <button onClick={() => deletarCategoria(cat.id)} className="p-1 hover:bg-red-50 rounded text-red-400 hover:text-red-600 transition-colors">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-gray-100 pt-4 space-y-3">
+            <p className="text-sm font-medium text-gray-700">Nova categoria</p>
+            <input className="input" placeholder="Nome da categoria" value={catNome} onChange={e => setCatNome(e.target.value)} />
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Cor</p>
+              <div className="flex flex-wrap gap-2">
+                {CORES_PRESET.map(cor => (
+                  <button key={cor} onClick={() => setCatCor(cor)}
+                    className={`w-7 h-7 rounded-full transition-transform ${catCor === cor ? 'scale-125 ring-2 ring-offset-2 ring-gray-400' : ''}`}
+                    style={{ backgroundColor: cor }} />
+                ))}
+              </div>
+            </div>
+            <button onClick={salvarCategoria} disabled={savingCat || !catNome.trim()} className="btn-primary w-full">
+              {savingCat ? 'Salvando...' : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Agenda</h1>
         <div className="flex gap-2">
+          {profile?.is_admin && (
+            <button onClick={() => setShowCats(true)} className="btn-secondary flex items-center gap-2">
+              <Settings size={16} /> Categorias
+            </button>
+          )}
           <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-2">
             <Link2 size={16} /> Google Calendar
           </button>
@@ -534,7 +652,6 @@ export default function Agenda() {
         {view === 'dia'    && <ViewDia />}
       </div>
 
-      {/* Modal novo evento */}
       {showNovo && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="card w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
@@ -551,6 +668,10 @@ export default function Agenda() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
                 <textarea className="input resize-none" rows={2} value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} />
               </div>
+              <SeletorCategoria
+                value={form.categoria_id}
+                onChange={(id, cor) => setForm(f => ({ ...f, categoria_id: id, cor }))}
+              />
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="dia_inteiro" checked={form.dia_inteiro} onChange={e => setForm(f => ({ ...f, dia_inteiro: e.target.checked }))} />
                 <label htmlFor="dia_inteiro" className="text-sm text-gray-700">Dia inteiro</label>
@@ -568,16 +689,6 @@ export default function Agenda() {
                     <input type="datetime-local" className="input" value={form.data_fim} onChange={e => setForm(f => ({ ...f, data_fim: e.target.value }))} />
                   </div>
                 )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Cor</label>
-                <div className="flex gap-2">
-                  {CORES.map(cor => (
-                    <button key={cor} onClick={() => setForm(f => ({ ...f, cor }))}
-                      className={`w-7 h-7 rounded-full transition-transform ${form.cor === cor ? 'scale-125 ring-2 ring-offset-2 ring-gray-400' : ''}`}
-                      style={{ backgroundColor: cor }} />
-                  ))}
-                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Repetir</label>
@@ -608,6 +719,7 @@ export default function Agenda() {
       )}
 
       <ModalEvento />
+      {showCats && <ModalCategorias />}
       {showSync && <GoogleCalendarSync onClose={() => setShowSync(false)} />}
     </div>
   )

@@ -15,6 +15,14 @@ export type Profile = {
   created_at: string
 }
 
+export type CategoriaEvento = {
+  id: string
+  nome: string
+  cor: string
+  criado_por: string | null
+  created_at: string
+}
+
 export type Evento = {
   id: string
   titulo: string
@@ -24,8 +32,10 @@ export type Evento = {
   dia_inteiro: boolean
   cor: string
   concluido: boolean
+  categoria_id: string | null
   criado_por: string
   created_at: string
+  categoria?: CategoriaEvento
 }
 
 export type Processo = {
