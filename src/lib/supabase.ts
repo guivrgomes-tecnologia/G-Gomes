@@ -34,6 +34,7 @@ export type Evento = {
   concluido: boolean
   categoria_id: string | null
   recorrencia_grupo: string | null
+  lembrete_minutos: number
   criado_por: string
   created_at: string
   categoria?: CategoriaEvento
