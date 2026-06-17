@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin, Flame, ArrowRight } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin, Flame, ArrowRight, Pencil, Trash2, CalendarPlus } from 'lucide-react'
 import { supabase, Evento, Pendencia } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
   const [pendenciaAtiva, setPendenciaAtiva] = useState<Pendencia | null>(null)
+  const [solucaoInput, setSolucaoInput] = useState('')
+  const [showSolucao, setShowSolucao] = useState(false)
 
   useEffect(() => {
     if (profile) load()
@@ -80,6 +82,44 @@ export default function Dashboard() {
       pendenciasEnviadas: pendEnv.count ?? 0,
     })
     setLoading(false)
+  }
+
+  async function mudarStatusPendencia(status: Pendencia['status']) {
+    if (!pendenciaAtiva) return
+    await supabase.from('pendencias').update({ status }).eq('id', pendenciaAtiva.id)
+    const updated = { ...pendenciaAtiva, status }
+    setPendenciaAtiva(updated)
+    setPendenciasAlta(prev => status === 'resolvida' || status === 'solucao_apresentada'
+      ? prev.filter(p => p.id !== pendenciaAtiva.id)
+      : prev.map(p => p.id === pendenciaAtiva.id ? updated : p)
+    )
+    if (status === 'resolvida') setPendenciaAtiva(null)
+  }
+
+  async function salvarSolucaoDash() {
+    if (!pendenciaAtiva || !solucaoInput.trim()) return
+    await supabase.from('pendencias').update({ solucao: solucaoInput.trim(), status: 'solucao_apresentada' }).eq('id', pendenciaAtiva.id)
+    setPendenciasAlta(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
+    setPendenciaAtiva(null)
+    setSolucaoInput(''); setShowSolucao(false)
+  }
+
+  async function deletarPendencia() {
+    if (!pendenciaAtiva) return
+    if (!confirm('Apagar esta pendência?')) return
+    await supabase.from('pendencias').delete().eq('id', pendenciaAtiva.id)
+    setPendenciasAlta(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
+    setPendenciaAtiva(null)
+  }
+
+  async function criarEventoPendencia() {
+    if (!pendenciaAtiva) return
+    const { data: ev } = await supabase.from('eventos').insert({
+      titulo: pendenciaAtiva.titulo, descricao: pendenciaAtiva.descricao || null,
+      data_inicio: new Date().toISOString(), dia_inteiro: true,
+      cor: '#ef4444', concluido: false, criado_por: user!.id,
+    }).select('id').single()
+    if (ev) { setPendenciaAtiva(null); navigate('/agenda') }
   }
 
   async function toggleConcluido(ev: Evento) {
@@ -291,54 +331,76 @@ export default function Dashboard() {
 
       {/* Modal detalhe da pendência */}
       {pendenciaAtiva && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPendenciaAtiva(null)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setPendenciaAtiva(null); setShowSolucao(false) }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start justify-between mb-3">
               <div className="flex-1 min-w-0 pr-2">
                 <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full mb-2 inline-block">Alta prioridade</span>
-                <h3 className="font-semibold text-gray-900 text-lg leading-tight">{pendenciaAtiva.titulo}</h3>
+                <h3 className="font-semibold text-gray-900 text-base leading-tight">{pendenciaAtiva.titulo}</h3>
               </div>
-              <button onClick={() => setPendenciaAtiva(null)} className="text-gray-400 hover:text-gray-600 shrink-0">
+              <button onClick={() => { setPendenciaAtiva(null); setShowSolucao(false) }} className="text-gray-400 hover:text-gray-600 shrink-0">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-2 mb-5">
-              {pendenciaAtiva.descricao && (
-                <p className="text-sm text-gray-600">{pendenciaAtiva.descricao}</p>
-              )}
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                  De: {(pendenciaAtiva.de_usuario as any)?.nome?.split(' ')[0]}
-                </span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
-                  Para: {(pendenciaAtiva.para_usuario as any)?.nome?.split(' ')[0]}
-                </span>
-                <span className={`px-2 py-1 rounded-full font-medium ${
-                  pendenciaAtiva.status === 'aberta' ? 'bg-orange-100 text-orange-700' :
-                  pendenciaAtiva.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' :
-                  'bg-purple-100 text-purple-700'
-                }`}>
+            <div className="space-y-2 mb-4">
+              {pendenciaAtiva.descricao && <p className="text-sm text-gray-600">{pendenciaAtiva.descricao}</p>}
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">De: {(pendenciaAtiva.de_usuario as any)?.nome?.split(' ')[0]}</span>
+                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">Para: {(pendenciaAtiva.para_usuario as any)?.nome?.split(' ')[0]}</span>
+                <span className={`px-2 py-1 rounded-full font-medium ${pendenciaAtiva.status === 'aberta' ? 'bg-orange-100 text-orange-700' : pendenciaAtiva.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
                   {pendenciaAtiva.status === 'aberta' ? 'A resolver' : pendenciaAtiva.status === 'em_andamento' ? 'Em andamento' : 'Solução apresentada'}
                 </span>
               </div>
-              {pendenciaAtiva.prazo && (
-                <p className="text-xs text-gray-400">
-                  Prazo: {new Date(pendenciaAtiva.prazo).toLocaleDateString('pt-BR')}
-                </p>
-              )}
+              {pendenciaAtiva.prazo && <p className="text-xs text-gray-400">Prazo: {new Date(pendenciaAtiva.prazo).toLocaleDateString('pt-BR')}</p>}
               {pendenciaAtiva.solucao && (
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <p className="text-xs font-semibold text-purple-700 mb-1">Solução apresentada</p>
+                  <p className="text-xs font-semibold text-purple-700 mb-1">Solução</p>
                   <p className="text-sm text-purple-900">{pendenciaAtiva.solucao}</p>
+                </div>
+              )}
+              {showSolucao && (
+                <div className="space-y-2">
+                  <textarea className="w-full text-sm border border-purple-300 rounded-lg p-2 resize-none focus:outline-none focus:border-purple-500 min-h-[80px]"
+                    placeholder="Descreva a solução..." value={solucaoInput} onChange={e => setSolucaoInput(e.target.value)} autoFocus />
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowSolucao(false)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
+                    <button onClick={salvarSolucaoDash} className="text-xs py-1.5 flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">Salvar</button>
+                  </div>
                 </div>
               )}
             </div>
 
-            <button onClick={() => { setPendenciaAtiva(null); navigate(`/pendencias?abrir=${pendenciaAtiva.id}`) }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
-              <AlertCircle size={15} /> Ver em pendências
-            </button>
+            <div className="flex flex-wrap gap-2 border-t pt-4">
+              {!showSolucao && pendenciaAtiva.status !== 'solucao_apresentada' && (
+                <button onClick={() => { setShowSolucao(true); setSolucaoInput('') }}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50">
+                  Apresentar solução
+                </button>
+              )}
+              {pendenciaAtiva.status !== 'em_andamento' && (
+                <button onClick={() => mudarStatusPendencia('em_andamento')}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+                  → Em andamento
+                </button>
+              )}
+              <button onClick={() => mudarStatusPendencia('resolvida')}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-50">
+                → Resolvida
+              </button>
+              <button onClick={() => { setPendenciaAtiva(null); navigate(`/pendencias?abrir=${pendenciaAtiva.id}`) }}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
+                <Pencil size={12} /> Editar
+              </button>
+              <button onClick={criarEventoPendencia}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-brand-300 text-brand-700 hover:bg-brand-50">
+                <CalendarPlus size={12} /> Criar evento
+              </button>
+              <button onClick={deletarPendencia}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-auto">
+                <Trash2 size={12} /> Deletar
+              </button>
+            </div>
           </div>
         </div>
       )}
