@@ -156,16 +156,15 @@ export default function Dashboard() {
                       : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                     return (
                       <li key={ev.id} onClick={() => setEventoAtivo(ev)}
-                        className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                        <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                        className={`flex items-center gap-2 px-5 cursor-pointer transition-colors hover:bg-gray-50 ${ev.concluido ? 'py-1.5' : 'py-3'}`}>
+                        <div className={`rounded-full shrink-0 transition-all ${ev.concluido ? 'w-1 h-4 opacity-40' : 'w-1 h-10'}`} style={{ backgroundColor: ev.cor }} />
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium text-gray-900 truncate ${ev.concluido ? 'line-through text-gray-400' : ''}`}>
+                          <p className={`truncate ${ev.concluido ? 'text-xs text-gray-400 line-through' : 'text-sm font-medium text-gray-900'}`}>
                             {ev.titulo}
                           </p>
-                          {ev.descricao && <p className="text-xs text-gray-400 truncate">{ev.descricao}</p>}
                         </div>
-                        <div className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-                          <Clock size={11} />
+                        <div className={`flex items-center gap-1 text-gray-400 shrink-0 ${ev.concluido ? 'text-xs opacity-50' : 'text-xs'}`}>
+                          <Clock size={10} />
                           {hora}
                         </div>
                       </li>
