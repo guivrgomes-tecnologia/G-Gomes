@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
+  const [pendenciasSolucao, setPendenciasSolucao] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
   const [pendenciaAtiva, setPendenciaAtiva] = useState<Pendencia | null>(null)
@@ -64,16 +65,28 @@ export default function Dashboard() {
       .from('pendencias')
       .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)')
       .eq('prioridade', 'alta')
-      .in('status', ['aberta', 'em_andamento'])
+      .neq('status', 'resolvida')
       .or(`para_usuario_id.eq.${profile!.id},de_usuario_id.eq.${profile!.id}`)
       .order('created_at', { ascending: false })
-    setPendenciasAlta(alta ?? [])
+    // solucao_apresentada só some do card alta prioridade se eu sou o destinatário (não o criador)
+    setPendenciasAlta((alta ?? []).filter(p =>
+      p.status !== 'solucao_apresentada' || p.de_usuario_id === profile!.id
+    ))
+
+    // Card soluções: pendências que criei e o destinatário apresentou solução
+    const { data: solucao } = await supabase
+      .from('pendencias')
+      .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)')
+      .eq('de_usuario_id', profile!.id)
+      .eq('status', 'solucao_apresentada')
+      .order('created_at', { ascending: false })
+    setPendenciasSolucao(solucao ?? [])
 
     const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', segStr).lte('data_inicio', domStr + 'T23:59:59'),
       supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
-      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
+      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']),
     ])
     setStats({
       eventosAmanha:      evAmanha.count ?? 0,
@@ -93,7 +106,10 @@ export default function Dashboard() {
       ? prev.filter(p => p.id !== pendenciaAtiva.id)
       : prev.map(p => p.id === pendenciaAtiva.id ? updated : p)
     )
-    if (status === 'resolvida') setPendenciaAtiva(null)
+    if (status === 'resolvida') {
+      setPendenciasSolucao(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
+      setPendenciaAtiva(null)
+    }
   }
 
   async function salvarSolucaoDash() {
@@ -257,6 +273,31 @@ export default function Dashboard() {
                 </ul>
               )}
             </div>
+
+            {/* Soluções apresentadas */}
+            {pendenciasSolucao.length > 0 && (
+              <div className="card overflow-hidden self-start w-full">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-purple-100 bg-purple-50">
+                  <h2 className="text-sm font-semibold text-purple-700 flex items-center gap-1.5">
+                    <CheckCircle2 size={14} /> Soluções para revisar
+                    <span className="text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">{pendenciasSolucao.length}</span>
+                  </h2>
+                  <Link to="/pendencias?aba=minhas" className="text-xs text-purple-500 hover:underline"><ArrowRight size={13} /></Link>
+                </div>
+                <ul className="divide-y divide-gray-100 max-h-[132px] lg:max-h-none overflow-y-auto">
+                  {pendenciasSolucao.map(p => (
+                    <li key={p.id} onClick={() => setPendenciaAtiva(p)}
+                      className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
+                        <p className="text-xs text-gray-400 truncate">Para: {(p.para_usuario as any)?.nome?.split(' ')[0]} · solução disponível</p>
+                      </div>
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full shrink-0">Ver</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* Cards de estatísticas */}
             <div className="grid grid-cols-2 gap-3">
