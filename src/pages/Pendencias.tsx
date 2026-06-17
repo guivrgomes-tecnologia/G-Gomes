@@ -76,6 +76,98 @@ async function criarEventoDaPendencia(titulo: string, descricao: string | null, 
   })
 }
 
+function FormModal({ title, f, setF, onSave, onClose, equipe, setores, reunioes, userId, saving }: {
+  title: string; f: FormState; setF: (fn: (prev: FormState) => FormState) => void
+  onSave: () => void; onClose: () => void
+  equipe: Profile[]; setores: Setor[]; reunioes: { id: string; titulo: string; pasta?: { nome: string } }[]
+  userId: string; saving: boolean
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
+            <input className="input" value={f.titulo} onChange={e => setF(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex: Enviar relatório mensal" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+            <textarea className="input resize-none" rows={2} value={f.descricao} onChange={e => setF(p => ({ ...p, descricao: e.target.value }))} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Para quem * <span className="text-gray-400 font-normal">(pode selecionar mais de um)</span></label>
+            <SeletorUsuarios selecionados={f.para_usuario_ids} equipe={equipe} userId={userId} onChange={ids => setF(p => ({ ...p, para_usuario_ids: ids }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
+              <select className="input" value={f.prioridade} onChange={e => setF(p => ({ ...p, prioridade: e.target.value as Pendencia['prioridade'] }))}>
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select className="input" value={f.status} onChange={e => setF(p => ({ ...p, status: e.target.value as Pendencia['status'] }))}>
+                <option value="aberta">A resolver</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="solucao_apresentada">Solução apresentada</option>
+                <option value="resolvida">Resolvida</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Setor</label>
+              <select className="input" value={f.setor_id} onChange={e => setF(p => ({ ...p, setor_id: e.target.value }))}>
+                <option value="">Nenhum</option>
+                {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+              <input type="date" className="input" value={f.prazo} onChange={e => setF(p => ({ ...p, prazo: e.target.value }))} />
+            </div>
+          </div>
+          {f.prazo && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Horário <span className="text-gray-400 font-normal">(opcional)</span></label>
+              <input type="time" className="input" value={f.hora} onChange={e => setF(p => ({ ...p, hora: e.target.value }))} />
+            </div>
+          )}
+          {f.prazo && (
+            <label className="flex items-center gap-2.5 p-3 rounded-lg border border-indigo-100 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors">
+              <input type="checkbox" checked={f.criar_evento} onChange={e => setF(p => ({ ...p, criar_evento: e.target.checked }))} className="w-4 h-4 accent-indigo-600" />
+              <div>
+                <p className="text-sm font-medium text-indigo-800">Criar evento na agenda</p>
+                <p className="text-xs text-indigo-500">Adiciona automaticamente à minha agenda</p>
+              </div>
+            </label>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Vincular a uma reunião <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <select className="input" value={f.reuniao_id} onChange={e => setF(p => ({ ...p, reuniao_id: e.target.value }))}>
+              <option value="">Nenhuma</option>
+              {reunioes.map(r => <option key={r.id} value={r.id}>{(r.pasta as any)?.nome ? `${(r.pasta as any).nome} · ` : ''}{r.titulo}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 mt-6">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
+          <button onClick={onSave} disabled={saving || !f.titulo || f.para_usuario_ids.length === 0} className="btn-primary flex-1">
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 async function salvarParticipantes(pendenciaId: string, ids: string[]) {
   await supabase.from('pendencia_participantes').delete().eq('pendencia_id', pendenciaId)
   if (ids.length > 0) {
@@ -284,96 +376,6 @@ export default function Pendencias() {
     return prazo.includes('T')
       ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       : d.toLocaleDateString('pt-BR')
-  }
-
-  function FormModal({ title, f, setF, onSave, onClose }: {
-    title: string; f: FormState; setF: (fn: (prev: FormState) => FormState) => void
-    onSave: () => void; onClose: () => void
-  }) {
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">{title}</h3>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Título *</label>
-              <input className="input" value={f.titulo} onChange={e => setF(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex: Enviar relatório mensal" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <textarea className="input resize-none" rows={2} value={f.descricao} onChange={e => setF(p => ({ ...p, descricao: e.target.value }))} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Para quem * <span className="text-gray-400 font-normal">(pode selecionar mais de um)</span></label>
-              <SeletorUsuarios selecionados={f.para_usuario_ids} equipe={equipe} userId={user!.id} onChange={ids => setF(p => ({ ...p, para_usuario_ids: ids }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
-                <select className="input" value={f.prioridade} onChange={e => setF(p => ({ ...p, prioridade: e.target.value as Pendencia['prioridade'] }))}>
-                  <option value="baixa">Baixa</option>
-                  <option value="media">Média</option>
-                  <option value="alta">Alta</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select className="input" value={f.status} onChange={e => setF(p => ({ ...p, status: e.target.value as Pendencia['status'] }))}>
-                  <option value="aberta">A resolver</option>
-                  <option value="em_andamento">Em andamento</option>
-                  <option value="solucao_apresentada">Solução apresentada</option>
-                  <option value="resolvida">Resolvida</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Setor</label>
-                <select className="input" value={f.setor_id} onChange={e => setF(p => ({ ...p, setor_id: e.target.value }))}>
-                  <option value="">Nenhum</option>
-                  {setores.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-                <input type="date" className="input" value={f.prazo} onChange={e => setF(p => ({ ...p, prazo: e.target.value }))} />
-              </div>
-            </div>
-            {f.prazo && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Horário <span className="text-gray-400 font-normal">(opcional)</span></label>
-                <input type="time" className="input" value={f.hora} onChange={e => setF(p => ({ ...p, hora: e.target.value }))} />
-              </div>
-            )}
-            {f.prazo && (
-              <label className="flex items-center gap-2.5 p-3 rounded-lg border border-indigo-100 bg-indigo-50 cursor-pointer hover:bg-indigo-100 transition-colors">
-                <input type="checkbox" checked={f.criar_evento} onChange={e => setF(p => ({ ...p, criar_evento: e.target.checked }))} className="w-4 h-4 accent-indigo-600" />
-                <div>
-                  <p className="text-sm font-medium text-indigo-800">Criar evento na agenda</p>
-                  <p className="text-xs text-indigo-500">Adiciona automaticamente à minha agenda</p>
-                </div>
-              </label>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vincular a uma reunião <span className="text-gray-400 font-normal">(opcional)</span></label>
-              <select className="input" value={f.reuniao_id} onChange={e => setF(p => ({ ...p, reuniao_id: e.target.value }))}>
-                <option value="">Nenhuma</option>
-                {reunioes.map(r => <option key={r.id} value={r.id}>{(r.pasta as any)?.nome ? `${(r.pasta as any).nome} · ` : ''}{r.titulo}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-3 mt-6">
-            <button onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={onSave} disabled={saving || !f.titulo || f.para_usuario_ids.length === 0} className="btn-primary flex-1">
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -611,11 +613,13 @@ export default function Pendencias() {
 
       {showModal && (
         <FormModal title="Nova Pendência" f={form} setF={setForm} onSave={salvar}
-          onClose={() => { setShowModal(false); setForm(FORM_INITIAL) }} />
+          onClose={() => { setShowModal(false); setForm(FORM_INITIAL) }}
+          equipe={equipe} setores={setores} reunioes={reunioes} userId={user!.id} saving={saving} />
       )}
       {editando && (
         <FormModal title="Editar Pendência" f={editForm} setF={setEditForm} onSave={salvarEdicao}
-          onClose={() => setEditando(null)} />
+          onClose={() => setEditando(null)}
+          equipe={equipe} setores={setores} reunioes={reunioes} userId={user!.id} saving={saving} />
       )}
     </div>
   )
