@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
+  const [pendenciaAtiva, setPendenciaAtiva] = useState<Pendencia | null>(null)
 
   useEffect(() => {
     if (profile) load()
@@ -202,7 +203,7 @@ export default function Dashboard() {
                   {pendenciasAlta.map(p => {
                     const euSouDest = p.para_usuario_id === profile?.id
                     return (
-                      <li key={p.id} onClick={() => navigate(`/pendencias?abrir=${p.id}`)}
+                      <li key={p.id} onClick={() => setPendenciaAtiva(p)}
                         className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
@@ -284,6 +285,60 @@ export default function Dashboard() {
                 <Calendar size={15} /> Ver na agenda
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal detalhe da pendência */}
+      {pendenciaAtiva && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPendenciaAtiva(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1 min-w-0 pr-2">
+                <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full mb-2 inline-block">Alta prioridade</span>
+                <h3 className="font-semibold text-gray-900 text-lg leading-tight">{pendenciaAtiva.titulo}</h3>
+              </div>
+              <button onClick={() => setPendenciaAtiva(null)} className="text-gray-400 hover:text-gray-600 shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-2 mb-5">
+              {pendenciaAtiva.descricao && (
+                <p className="text-sm text-gray-600">{pendenciaAtiva.descricao}</p>
+              )}
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                  De: {(pendenciaAtiva.de_usuario as any)?.nome?.split(' ')[0]}
+                </span>
+                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">
+                  Para: {(pendenciaAtiva.para_usuario as any)?.nome?.split(' ')[0]}
+                </span>
+                <span className={`px-2 py-1 rounded-full font-medium ${
+                  pendenciaAtiva.status === 'aberta' ? 'bg-orange-100 text-orange-700' :
+                  pendenciaAtiva.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' :
+                  'bg-purple-100 text-purple-700'
+                }`}>
+                  {pendenciaAtiva.status === 'aberta' ? 'A resolver' : pendenciaAtiva.status === 'em_andamento' ? 'Em andamento' : 'Solução apresentada'}
+                </span>
+              </div>
+              {pendenciaAtiva.prazo && (
+                <p className="text-xs text-gray-400">
+                  Prazo: {new Date(pendenciaAtiva.prazo).toLocaleDateString('pt-BR')}
+                </p>
+              )}
+              {pendenciaAtiva.solucao && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-purple-700 mb-1">Solução apresentada</p>
+                  <p className="text-sm text-purple-900">{pendenciaAtiva.solucao}</p>
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => { setPendenciaAtiva(null); navigate(`/pendencias?abrir=${pendenciaAtiva.id}`) }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+              <AlertCircle size={15} /> Ver em pendências
+            </button>
           </div>
         </div>
       )}
