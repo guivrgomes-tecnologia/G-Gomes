@@ -239,12 +239,18 @@ export default function Pendencias() {
     if (!form.titulo || form.para_usuario_ids.length === 0) return
     setSaving(true)
     const prazoSalvo = form.prazo ? (form.hora ? `${form.prazo}T${form.hora}` : form.prazo) : null
-    const { data: inserted } = await supabase.from('pendencias').insert({
+    const { data: inserted, error } = await supabase.from('pendencias').insert({
       titulo: form.titulo, descricao: form.descricao || null,
       status: form.status, prioridade: form.prioridade,
       de_usuario_id: user!.id, para_usuario_id: form.para_usuario_ids[0],
       setor_id: form.setor_id || null, prazo: prazoSalvo, criado_por: user!.id,
     }).select('id').single()
+
+    if (error) {
+      alert('Erro ao salvar pendência: ' + error.message)
+      setSaving(false)
+      return
+    }
 
     if (inserted) {
       await salvarParticipantes(inserted.id, form.para_usuario_ids)
