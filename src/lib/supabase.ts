@@ -37,6 +37,7 @@ export type Evento = {
   recorrencia_grupo: string | null
   lembrete_minutos: number
   criado_por: string
+  google_event_id: string | null
   created_at: string
   categoria?: CategoriaEvento
 }

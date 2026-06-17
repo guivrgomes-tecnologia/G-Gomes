@@ -9,6 +9,7 @@ import Pendencias from './pages/Pendencias'
 import Reunioes from './pages/Reunioes'
 import Perfil from './pages/Perfil'
 import Admin from './pages/Admin'
+import GoogleCallback from './pages/GoogleCallback'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -26,6 +27,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/google/callback" element={<PrivateRoute><GoogleCallback /></PrivateRoute>} />
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="agenda" element={<Agenda />} />

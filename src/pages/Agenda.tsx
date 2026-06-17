@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video, AlertCircle, MessageCircle, Timer } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Settings, Tag, Video, AlertCircle, MessageCircle, Timer } from 'lucide-react'
 import { supabase, Evento, Profile, CategoriaEvento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -118,6 +118,8 @@ export default function Agenda() {
   const [editForm, setEditForm] = useState<Partial<FormState>>({})
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
 
+  const [googleConectado, setGoogleConectado] = useState(false)
+
   // escopo de recorrência (deletar/editar)
   const [modalEscopo, setModalEscopo] = useState<{ tipo: 'deletar' | 'editar' } | null>(null)
 
@@ -126,7 +128,7 @@ export default function Agenda() {
   const [catCor, setCatCor] = useState(CORES_PRESET[0])
   const [savingCat, setSavingCat] = useState(false)
 
-  useEffect(() => { loadEventos(); loadEquipe(); loadCategorias() }, [cursor, view])
+  useEffect(() => { loadEventos(); loadEquipe(); loadCategorias(); checkGoogle() }, [cursor, view])
 
   useEffect(() => {
     if (searchParams.get('novo') === '1') abrirNovo()
@@ -138,6 +140,30 @@ export default function Agenda() {
       semanaRef.current.scrollTop = Math.max(0, hora - 1) * 56
     }
   }, [view])
+
+  async function checkGoogle() {
+    const { data } = await supabase.from('google_tokens').select('usuario_id').eq('usuario_id', user!.id).single()
+    setGoogleConectado(!!data)
+  }
+
+  function conectarGoogle() {
+    const params = new URLSearchParams({
+      client_id: '867246627124-nril1gae58sbuh4moairmh1rhivq2uib.apps.googleusercontent.com',
+      redirect_uri: 'https://g-gomes.vercel.app/auth/google/callback',
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/calendar.events',
+      access_type: 'offline',
+      prompt: 'consent',
+    })
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+  }
+
+  async function syncGoogle(action: 'create' | 'update' | 'delete', evento: any) {
+    if (!googleConectado) return
+    await supabase.functions.invoke('google-calendar-sync', {
+      body: { action, user_id: user!.id, evento },
+    })
+  }
 
   async function loadEquipe() {
     const { data } = await supabase.from('profiles').select('*').order('nome')
@@ -242,6 +268,7 @@ export default function Agenda() {
       if (form.participantes.length > 0 && inserted) {
         await salvarParticipantes(inserted.id, form.participantes)
       }
+      if (inserted) syncGoogle('create', { ...comum, data_inicio: base, id: inserted.id })
     }
     setSaving(false); setShowNovo(false); loadEventos()
   }
@@ -270,8 +297,10 @@ export default function Agenda() {
     }
     if (escopo === 'este') {
       const di = editForm.data_inicio ?? eventoAtivo.data_inicio
-      await supabase.from('eventos').update({ ...campos, data_inicio: campos.dia_inteiro ? di.split('T')[0] : localDatetimeToISO(di) }).eq('id', eventoAtivo.id)
+      const dataInicio = campos.dia_inteiro ? di.split('T')[0] : localDatetimeToISO(di)
+      await supabase.from('eventos').update({ ...campos, data_inicio: dataInicio }).eq('id', eventoAtivo.id)
       await salvarParticipantes(eventoAtivo.id, editForm.participantes ?? participantesAtivos.map(p => p.id))
+      syncGoogle('update', { ...eventoAtivo, ...campos, data_inicio: dataInicio })
     } else if (escopo === 'proximos' && eventoAtivo.recorrencia_grupo) {
       await supabase.from('eventos').update(campos)
         .eq('recorrencia_grupo', eventoAtivo.recorrencia_grupo)
@@ -285,6 +314,7 @@ export default function Agenda() {
   async function executarDeletar(escopo: 'este' | 'proximos' | 'todos') {
     if (!eventoAtivo) return
     if (escopo === 'este') {
+      syncGoogle('delete', eventoAtivo)
       await supabase.from('eventos').delete().eq('id', eventoAtivo.id)
     } else if (escopo === 'proximos' && eventoAtivo.recorrencia_grupo) {
       await supabase.from('eventos').delete()
@@ -604,6 +634,14 @@ export default function Agenda() {
                   <Video size={15} /> Ver reunião vinculada
                 </button>
               )}
+              {ev.google_event_id && (
+                <a href={`https://calendar.google.com/calendar/event?eid=${btoa(ev.google_event_id)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors border border-blue-200">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 shrink-0" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                  Ver no Google Calendar
+                </a>
+              )}
               {pendenciaVinculada && (
                 <button
                   onClick={() => { setEventoAtivo(null); navigate('/pendencias') }}
@@ -753,9 +791,17 @@ export default function Agenda() {
               <Settings size={14} /> <span className="hidden sm:inline">Categorias</span><span className="sm:hidden">Cat.</span>
             </button>
           )}
-          <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
-            <Link2 size={14} /> <span className="hidden sm:inline">Google Calendar</span><span className="sm:hidden">Google</span>
-          </button>
+          {googleConectado ? (
+            <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2 text-green-700 border-green-300">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span className="hidden sm:inline">Google conectado</span><span className="sm:hidden">Google</span>
+            </button>
+          ) : (
+            <button onClick={conectarGoogle} className="btn-secondary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span className="hidden sm:inline">Conectar Google</span><span className="sm:hidden">Google</span>
+            </button>
+          )}
           <button onClick={() => abrirNovo()} className="btn-primary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
             <Plus size={14} /> <span className="hidden sm:inline">Novo evento</span><span className="sm:hidden">Novo</span>
           </button>
