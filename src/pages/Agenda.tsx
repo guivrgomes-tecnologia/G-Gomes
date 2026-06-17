@@ -699,20 +699,20 @@ export default function Agenda() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Agenda</h1>
-        <div className="flex gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Agenda</h1>
+        <div className="flex gap-1.5 sm:gap-2">
           {profile?.is_admin && (
-            <button onClick={() => setShowCats(true)} className="btn-secondary flex items-center gap-2">
-              <Settings size={16} /> Categorias
+            <button onClick={() => setShowCats(true)} className="btn-secondary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
+              <Settings size={14} /> <span className="hidden sm:inline">Categorias</span><span className="sm:hidden">Cat.</span>
             </button>
           )}
-          <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-2">
-            <Link2 size={16} /> Google Calendar
+          <button onClick={() => setShowSync(true)} className="btn-secondary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
+            <Link2 size={14} /> <span className="hidden sm:inline">Google Calendar</span><span className="sm:hidden">Google</span>
           </button>
-          <button onClick={() => abrirNovo()} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Novo evento
+          <button onClick={() => abrirNovo()} className="btn-primary flex items-center gap-1.5 text-xs sm:text-sm px-2.5 sm:px-4 py-1.5 sm:py-2">
+            <Plus size={14} /> <span className="hidden sm:inline">Novo evento</span><span className="sm:hidden">Novo</span>
           </button>
         </div>
       </div>
