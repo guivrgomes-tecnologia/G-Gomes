@@ -26,7 +26,10 @@ export function usePushNotifications() {
   }, [])
 
   async function ativar() {
-    if (!user || !VAPID_PUBLIC_KEY) return
+    if (!user) { alert('Usuário não autenticado'); return }
+    if (!VAPID_PUBLIC_KEY) { alert('Chave VAPID não configurada. Verifique as variáveis de ambiente no Vercel.'); return }
+    if (!('serviceWorker' in navigator)) { alert('Service Worker não suportado neste browser.'); return }
+    if (!('PushManager' in window)) { alert('Push notifications não suportado neste browser/dispositivo.'); return }
     setLoading(true)
     try {
       const reg = await navigator.serviceWorker.register('/sw.js')
@@ -41,16 +44,17 @@ export function usePushNotifications() {
       })
 
       const { endpoint, keys } = sub.toJSON() as any
-      await supabase.from('push_subscriptions').upsert({
+      const { error } = await supabase.from('push_subscriptions').upsert({
         usuario_id: user.id,
         endpoint,
         p256dh: keys.p256dh,
         auth: keys.auth,
       }, { onConflict: 'usuario_id,endpoint' })
 
+      if (error) { alert('Erro ao salvar subscription: ' + error.message); setLoading(false); return }
       setStatus('granted')
-    } catch (e) {
-      console.error('Push subscription error:', e)
+    } catch (e: any) {
+      alert('Erro ao ativar notificações: ' + (e?.message ?? String(e)))
     }
     setLoading(false)
   }
