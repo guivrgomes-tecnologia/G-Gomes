@@ -7,6 +7,7 @@ import Agenda from './pages/Agenda'
 import Processos from './pages/Processos'
 import Pendencias from './pages/Pendencias'
 import Reunioes from './pages/Reunioes'
+import Perfil from './pages/Perfil'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="processos" element={<Processos />} />
             <Route path="pendencias" element={<Pendencias />} />
             <Route path="reunioes" element={<Reunioes />} />
+            <Route path="perfil" element={<Perfil />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

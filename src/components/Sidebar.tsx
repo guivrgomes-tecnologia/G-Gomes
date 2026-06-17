@@ -57,15 +57,15 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
       </nav>
 
       <div className="px-4 py-4 border-t border-brand-800">
-        <div className="flex items-center gap-3 mb-3 px-1">
-          <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-sm font-bold">
+        <button onClick={() => { navigate('/perfil'); onNavigate() }} className="flex items-center gap-3 mb-3 px-1 w-full hover:bg-brand-800 rounded-lg py-1 transition-colors text-left">
+          <div className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center text-sm font-bold shrink-0">
             {profile?.nome?.[0]?.toUpperCase() ?? '?'}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{profile?.nome ?? 'Usuário'}</p>
-            <p className="text-brand-300 text-xs truncate">{profile?.cargo ?? ''}</p>
+            <p className="text-brand-300 text-xs truncate">{profile?.cargo ?? 'Editar perfil'}</p>
           </div>
-        </div>
+        </button>
         {status !== 'unsupported' && (
           <button
             onClick={status === 'granted' ? desativar : ativar}
