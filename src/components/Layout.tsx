@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 
 export default function Layout() {
   const [menuAberto, setMenuAberto] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <div className="flex min-h-screen">
@@ -33,7 +34,7 @@ export default function Layout() {
           <button onClick={() => setMenuAberto(true)} className="p-1.5 hover:bg-brand-800 rounded-lg">
             <Menu size={22} />
           </button>
-          <span className="font-bold text-sm">G Gomes</span>
+          <button onClick={() => navigate('/')} className="font-bold text-sm hover:text-brand-300 transition-colors">G Gomes</button>
         </div>
 
         <Outlet />
