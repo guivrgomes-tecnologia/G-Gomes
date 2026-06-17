@@ -186,8 +186,9 @@ export default function Reunioes() {
     if (!reuniaoAberta || !pastaSelecionada) return
     setSaving(true)
     const dataInicio = reuniaoAberta.data ?? new Date().toISOString()
+    const descricao = [pastaSelecionada.nome, reuniaoAberta.pauta].filter(Boolean).join(' · ') || null
     const { data: ev } = await supabase.from('eventos').insert({
-      titulo: reuniaoAberta.titulo, descricao: reuniaoAberta.pauta || null,
+      titulo: reuniaoAberta.titulo, descricao,
       data_inicio: dataInicio, dia_inteiro: !reuniaoAberta.data?.includes('T'),
       cor: pastaSelecionada.cor, concluido: false, criado_por: user!.id,
     }).select('id').single()
