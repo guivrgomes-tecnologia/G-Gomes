@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ReuniaPasta, Reuniao, Pendencia, Profile } from '../lib/supabase'
-import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy, ClipboardList, ChevronDown, ExternalLink, Users } from 'lucide-react'
+import { Plus, FolderOpen, Folder, ChevronRight, ChevronLeft, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy, ClipboardList, ChevronDown, ExternalLink, Users } from 'lucide-react'
 
 const CORES = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
@@ -284,10 +284,13 @@ export default function Reunioes() {
   const prioridadeCor: Record<string, string> = { baixa: 'bg-green-100 text-green-700', media: 'bg-yellow-100 text-yellow-700', alta: 'bg-red-100 text-red-700' }
   const pendenciasNaoVinculadas = todasPendencias.filter(p => !pendenciasVinculadas.find(v => v.id === p.id))
 
+  // Mobile: passo atual (pastas → reunioes → detalhe)
+  const passoMobile = reuniaoAberta ? 2 : pastaSelecionada ? 1 : 0
+
   return (
     <div className="flex h-full min-h-screen bg-gray-50">
       {/* Painel de pastas */}
-      <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className={`${passoMobile !== 0 ? 'hidden lg:flex' : 'flex'} w-full lg:w-64 bg-white border-r border-gray-200 flex-col`}>
         <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="font-semibold text-gray-800">Reuniões</h2>
           <button onClick={() => setShowNovaPasta(true)} className="text-brand-600 hover:text-brand-800" title="Nova pasta">
@@ -313,7 +316,7 @@ export default function Reunioes() {
       </div>
 
       {/* Lista de reuniões */}
-      <div className="w-72 bg-white border-r border-gray-200 flex flex-col">
+      <div className={`${passoMobile !== 1 ? 'hidden lg:flex' : 'flex'} w-full lg:w-72 bg-white border-r border-gray-200 flex-col`}>
         {!pastaSelecionada ? (
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm px-6 text-center">
             Selecione uma pasta para ver as reuniões
@@ -322,6 +325,9 @@ export default function Reunioes() {
           <>
             <div className="px-4 py-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
+                <button onClick={() => setPastaSelecionada(null)} className="lg:hidden p-1 hover:bg-gray-100 rounded-lg text-gray-500">
+                  <ChevronLeft size={18} />
+                </button>
                 <span style={{ color: pastaSelecionada.cor }}><FolderOpen size={16} /></span>
                 <h3 className="font-medium text-gray-800 text-sm truncate">{pastaSelecionada.nome}</h3>
               </div>
@@ -387,21 +393,26 @@ export default function Reunioes() {
       </div>
 
       {/* Detalhe da reunião */}
-      <div className="flex-1 overflow-y-auto">
+      <div className={`${passoMobile !== 2 ? 'hidden lg:flex' : 'flex'} flex-1 overflow-y-auto flex-col`}>
         {!reuniaoAberta ? (
           <div className="h-full flex items-center justify-center text-gray-400 text-sm">
             Selecione uma reunião para abrir
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto px-6 py-6">
+          <div className="max-w-3xl mx-auto px-4 lg:px-6 py-4 lg:py-6 w-full">
             {/* Cabeçalho */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
               <div className="flex items-start justify-between mb-3">
-                {editandoCabecalho ? (
-                  <input className="input text-lg font-semibold flex-1 mr-3" value={editTitulo} onChange={e => setEditTitulo(e.target.value)} />
-                ) : (
-                  <h1 className="text-xl font-bold text-gray-900 flex-1">{reuniaoAberta.titulo}</h1>
-                )}
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <button onClick={() => setReuniaoAberta(null)} className="lg:hidden p-1 hover:bg-gray-100 rounded-lg text-gray-500 shrink-0">
+                    <ChevronLeft size={18} />
+                  </button>
+                  {editandoCabecalho ? (
+                    <input className="input text-lg font-semibold flex-1" value={editTitulo} onChange={e => setEditTitulo(e.target.value)} />
+                  ) : (
+                    <h1 className="text-xl font-bold text-gray-900 flex-1">{reuniaoAberta.titulo}</h1>
+                  )}
+                </div>
                 <button onClick={() => setEditandoCabecalho(v => !v)} className="text-gray-400 hover:text-gray-600 ml-2">
                   <Edit2 size={16} />
                 </button>
