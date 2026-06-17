@@ -218,14 +218,14 @@ export default function Dashboard() {
             </div>
 
             {/* Cards de estatísticas */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {cards.map(({ label, value, icon: Icon, color, link }) => (
-                <Link key={label} to={link} className="card p-5 hover:shadow-md transition-shadow">
-                  <div className={`inline-flex p-2 rounded-lg ${color} mb-3`}>
-                    <Icon size={18} />
+                <Link key={label} to={link} className="card p-3 hover:shadow-md transition-shadow">
+                  <div className={`inline-flex p-1.5 rounded-lg ${color} mb-2`}>
+                    <Icon size={15} />
                   </div>
-                  <p className="text-2xl font-bold text-gray-900">{value}</p>
-                  <p className="text-xs text-gray-500 mt-1">{label}</p>
+                  <p className="text-xl font-bold text-gray-900">{value}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{label}</p>
                 </Link>
               ))}
             </div>
