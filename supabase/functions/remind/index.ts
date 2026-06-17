@@ -41,24 +41,34 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
-  // Janela: eventos que começam entre agora e daqui 2 minutos
   const agora = new Date()
-  const em2min = new Date(agora.getTime() + 2 * 60 * 1000)
+  // Busca eventos nas próximas 24h para filtrar pelo lembrete_minutos de cada um
+  const em24h = new Date(agora.getTime() + 24 * 60 * 60 * 1000)
 
   const { data: eventos } = await supabase
     .from('eventos')
-    .select('id, titulo, criado_por, dia_inteiro')
+    .select('id, titulo, criado_por, dia_inteiro, data_inicio, lembrete_minutos')
     .eq('concluido', false)
     .eq('dia_inteiro', false)
     .gte('data_inicio', agora.toISOString())
-    .lte('data_inicio', em2min.toISOString())
+    .lte('data_inicio', em24h.toISOString())
 
   if (!eventos?.length) return new Response(JSON.stringify({ checked: 0 }))
 
+  // Filtra eventos cujo lembrete deve disparar agora (janela de 1 minuto)
+  const paraNotificar = eventos.filter((ev: any) => {
+    const inicio = new Date(ev.data_inicio).getTime()
+    const lembrete = (ev.lembrete_minutos ?? 15) * 60 * 1000
+    const disparo = inicio - lembrete
+    // Dispara se o momento do lembrete está entre agora e agora+1min
+    return disparo >= agora.getTime() && disparo < agora.getTime() + 60 * 1000
+  })
+
+  if (!paraNotificar.length) return new Response(JSON.stringify({ checked: eventos.length, notificar: 0 }))
+
   let enviados = 0
 
-  for (const ev of eventos) {
-    // Coleta criador + participantes
+  for (const ev of paraNotificar) {
     const { data: parts } = await supabase
       .from('evento_participantes')
       .select('usuario_id')
@@ -66,18 +76,19 @@ Deno.serve(async (req) => {
 
     const ids = new Set<string>([ev.criado_por, ...(parts ?? []).map((p: any) => p.usuario_id)])
 
-    // Busca subscriptions
     const { data: subs } = await supabase
       .from('push_subscriptions')
       .select('endpoint')
       .in('usuario_id', [...ids])
 
-    const payload = { title: '🔔 Evento agora', body: ev.titulo, url: '/agenda' }
+    const minutos = ev.lembrete_minutos ?? 15
+    const body = minutos === 0 ? `Agora: ${ev.titulo}` : `Em ${minutos < 60 ? `${minutos} min` : `${minutos / 60}h`}: ${ev.titulo}`
+    const payload = { title: '🔔 Lembrete de evento', body, url: '/agenda' }
     await Promise.allSettled((subs ?? []).map((s: any) => sendPush(s.endpoint, payload)))
     enviados += subs?.length ?? 0
   }
 
-  return new Response(JSON.stringify({ eventos: eventos.length, enviados }), {
+  return new Response(JSON.stringify({ eventos: eventos.length, notificar: paraNotificar.length, enviados }), {
     headers: { 'Content-Type': 'application/json' }
   })
 })

@@ -13,15 +13,31 @@ const DIAS_SEMANA_ABREV = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 type View = 'mes' | 'semana' | 'dia'
 type Recorrencia = 'nao' | 'diario' | 'semanal' | 'mensal' | 'anual'
 
+const LEMBRETE_OPCOES = [
+  { label: 'Na hora do evento', value: 0 },
+  { label: '10 minutos antes', value: 10 },
+  { label: '15 minutos antes', value: 15 },
+  { label: '20 minutos antes', value: 20 },
+  { label: '30 minutos antes', value: 30 },
+  { label: '45 minutos antes', value: 45 },
+  { label: '1 hora antes', value: 60 },
+  { label: '2 horas antes', value: 120 },
+  { label: '3 horas antes', value: 180 },
+  { label: '6 horas antes', value: 360 },
+  { label: '8 horas antes', value: 480 },
+  { label: '12 horas antes', value: 720 },
+  { label: '24 horas antes', value: 1440 },
+]
+
 type FormState = {
   titulo: string; descricao: string; data_inicio: string; data_fim: string
   dia_inteiro: boolean; cor: string; categoria_id: string; recorrencia: Recorrencia; recorrencia_ate: string
-  participantes: string[]
+  participantes: string[]; lembrete_minutos: number
 }
 const FORM_INITIAL: FormState = {
   titulo: '', descricao: '', data_inicio: '', data_fim: '',
   dia_inteiro: true, cor: COR_PADRAO, categoria_id: '', recorrencia: 'nao', recorrencia_ate: '',
-  participantes: [],
+  participantes: [], lembrete_minutos: 15,
 }
 
 function toDateStr(d: Date) {
@@ -196,7 +212,7 @@ export default function Agenda() {
       titulo: form.titulo, descricao: form.descricao || null,
       data_fim: form.data_fim || null, dia_inteiro: form.dia_inteiro,
       cor: form.cor, categoria_id: form.categoria_id || null,
-      criado_por: user!.id, concluido: false,
+      criado_por: user!.id, concluido: false, lembrete_minutos: form.lembrete_minutos,
     }
 
     if (form.recorrencia !== 'nao' && form.recorrencia_ate) {
@@ -236,6 +252,7 @@ export default function Agenda() {
       dia_inteiro:  editForm.dia_inteiro ?? eventoAtivo.dia_inteiro,
       cor:          editForm.cor         ?? eventoAtivo.cor,
       categoria_id: editForm.categoria_id !== undefined ? (editForm.categoria_id || null) : eventoAtivo.categoria_id,
+      lembrete_minutos: editForm.lembrete_minutos ?? eventoAtivo.lembrete_minutos,
     }
     if (escopo === 'este') {
       await supabase.from('eventos').update({ ...campos, data_inicio: editForm.data_inicio ?? eventoAtivo.data_inicio }).eq('id', eventoAtivo.id)
@@ -544,7 +561,7 @@ export default function Agenda() {
                 </button>
                 <div className="flex gap-2">
                   <button onClick={() => {
-                    setEditForm({ titulo: ev.titulo, descricao: ev.descricao ?? '', data_inicio: ev.data_inicio, data_fim: ev.data_fim ?? '', dia_inteiro: ev.dia_inteiro, cor: ev.cor, categoria_id: ev.categoria_id ?? '', participantes: participantesAtivos.map(p => p.id) })
+                    setEditForm({ titulo: ev.titulo, descricao: ev.descricao ?? '', data_inicio: ev.data_inicio, data_fim: ev.data_fim ?? '', dia_inteiro: ev.dia_inteiro, cor: ev.cor, categoria_id: ev.categoria_id ?? '', participantes: participantesAtivos.map(p => p.id), lembrete_minutos: ev.lembrete_minutos ?? 15 })
                     pedirEscopo('editar')
                   }} className="btn-secondary flex-1 flex items-center justify-center gap-2">
                     <Pencil size={14} /> Editar
@@ -589,6 +606,12 @@ export default function Agenda() {
                 )}
               </div>
               <SeletorParticipantes selecionados={idsEdit} onChange={ids => setEditForm(f => ({ ...f, participantes: ids }))} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lembrete</label>
+                <select className="input" value={ef.lembrete_minutos ?? ev.lembrete_minutos ?? 15} onChange={e => setEditForm(f => ({ ...f, lembrete_minutos: Number(e.target.value) }))}>
+                  {LEMBRETE_OPCOES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setEditando(false)} className="btn-secondary flex-1">Cancelar</button>
                 <button onClick={() => pedirEscopo('editar')} disabled={saving} className="btn-primary flex-1">
@@ -742,6 +765,12 @@ export default function Agenda() {
                 </div>
               )}
               <SeletorParticipantes selecionados={form.participantes} onChange={ids => setForm(f => ({ ...f, participantes: ids }))} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Lembrete</label>
+                <select className="input" value={form.lembrete_minutos} onChange={e => setForm(f => ({ ...f, lembrete_minutos: Number(e.target.value) }))}>
+                  {LEMBRETE_OPCOES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowNovo(false)} className="btn-secondary flex-1">Cancelar</button>
