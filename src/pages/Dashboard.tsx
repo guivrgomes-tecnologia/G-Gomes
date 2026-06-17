@@ -144,7 +144,7 @@ export default function Dashboard() {
                 <h2 className="font-semibold text-gray-900 flex items-center gap-2">
                   <Calendar size={16} className="text-brand-500" /> Hoje
                 </h2>
-                <Link to="/agenda" className="text-sm text-brand-600 hover:underline">Ver agenda →</Link>
+                <Link to="/agenda?view=dia" className="text-sm text-brand-600 hover:underline">Ver agenda →</Link>
               </div>
               {eventosHoje.length === 0 ? (
                 <p className="px-5 py-6 text-sm text-gray-400 text-center">Nenhum evento hoje</p>
