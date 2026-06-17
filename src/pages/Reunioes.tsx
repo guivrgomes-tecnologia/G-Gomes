@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ReuniaPasta, Reuniao } from '../lib/supabase'
-import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2 } from 'lucide-react'
+import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle } from 'lucide-react'
 
 const CORES = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
@@ -14,21 +14,20 @@ export default function Reunioes() {
   const [reuniaoAberta, setReuniaoAberta] = useState<Reuniao | null>(null)
   const [saving, setSaving] = useState(false)
 
-  // Modais
   const [showNovaPasta, setShowNovaPasta] = useState(false)
   const [showNovaReuniao, setShowNovaReuniao] = useState(false)
   const [nomePasta, setNomePasta] = useState('')
   const [corPasta, setCorPasta] = useState(CORES[0])
 
-  // Form reunião
-  const [formReuniao, setFormReuniao] = useState({ titulo: '', data: '', hora: '' })
+  const [formReuniao, setFormReuniao] = useState({ titulo: '', data: '', hora: '', tipo: 'presencial' as 'presencial' | 'online' })
 
-  // Edição inline da reunião aberta
   const [editPauta, setEditPauta] = useState('')
   const [editTranscricao, setEditTranscricao] = useState('')
   const [editTitulo, setEditTitulo] = useState('')
   const [editData, setEditData] = useState('')
   const [editHora, setEditHora] = useState('')
+  const [editTipo, setEditTipo] = useState<'presencial' | 'online'>('presencial')
+  const [editLinkVideo, setEditLinkVideo] = useState('')
   const [editandoCabecalho, setEditandoCabecalho] = useState(false)
 
   const loadPastas = useCallback(async () => {
@@ -76,10 +75,11 @@ export default function Reunioes() {
     const { data: inserted } = await supabase.from('reunioes').insert({
       titulo: formReuniao.titulo.trim(),
       data,
+      tipo: formReuniao.tipo,
       pasta_id: pastaSelecionada.id,
       criado_por: user!.id,
     }).select().single()
-    setFormReuniao({ titulo: '', data: '', hora: '' })
+    setFormReuniao({ titulo: '', data: '', hora: '', tipo: 'presencial' })
     setShowNovaReuniao(false)
     await loadReunioes(pastaSelecionada.id)
     if (inserted) abrirReuniao(inserted)
@@ -91,6 +91,8 @@ export default function Reunioes() {
     setEditPauta(r.pauta ?? '')
     setEditTranscricao(r.transcricao ?? '')
     setEditTitulo(r.titulo)
+    setEditTipo(r.tipo ?? 'presencial')
+    setEditLinkVideo(r.link_video ?? '')
     const d = r.data ? new Date(r.data) : null
     setEditData(d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : '')
     setEditHora(d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '')
@@ -109,6 +111,8 @@ export default function Reunioes() {
     const { data: updated } = await supabase.from('reunioes').update({
       titulo: editTitulo,
       data,
+      tipo: editTipo,
+      link_video: editTipo === 'online' ? (editLinkVideo || null) : null,
       pauta: editPauta || null,
       transcricao: editTranscricao || null,
       updated_at: new Date().toISOString(),
@@ -122,14 +126,13 @@ export default function Reunioes() {
   async function lancarNaAgenda() {
     if (!reuniaoAberta || !pastaSelecionada) return
     setSaving(true)
-    const cor = pastaSelecionada.cor
     const dataInicio = reuniaoAberta.data ?? new Date().toISOString()
     const { data: ev } = await supabase.from('eventos').insert({
       titulo: reuniaoAberta.titulo,
       descricao: reuniaoAberta.pauta || null,
       data_inicio: dataInicio,
       dia_inteiro: !reuniaoAberta.data?.includes('T'),
-      cor,
+      cor: pastaSelecionada.cor,
       concluido: false,
       criado_por: user!.id,
     }).select('id').single()
@@ -152,6 +155,17 @@ export default function Reunioes() {
     if (!iso) return '—'
     const d = new Date(iso)
     return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  function abrirWhatsApp() {
+    if (!reuniaoAberta) return
+    const titulo = reuniaoAberta.titulo
+    const data = reuniaoAberta.data ? formatData(reuniaoAberta.data) : 'a definir'
+    const tipo = reuniaoAberta.tipo === 'online' ? 'Online' : 'Presencial'
+    const link = reuniaoAberta.tipo === 'online' && reuniaoAberta.link_video ? `\n🔗 Link: ${reuniaoAberta.link_video}` : ''
+    const pauta = reuniaoAberta.pauta ? `\n\n📋 Pauta:\n${reuniaoAberta.pauta}` : ''
+    const msg = `📅 *Lembrete de Reunião*\n\n*${titulo}*\n🗓 Data: ${data}\n📍 Tipo: ${tipo}${link}${pauta}`
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
   return (
@@ -224,7 +238,13 @@ export default function Reunioes() {
                     </button>
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{r.data ? formatData(r.data) : 'Sem data'}</p>
-                  {r.evento_id && <span className="text-xs text-green-600 mt-1 block">✓ Na agenda</span>}
+                  <div className="flex items-center gap-2 mt-1">
+                    {r.tipo === 'online'
+                      ? <span className="text-xs text-blue-500 flex items-center gap-0.5"><Video size={11} /> Online</span>
+                      : <span className="text-xs text-gray-400 flex items-center gap-0.5"><MapPin size={11} /> Presencial</span>
+                    }
+                    {r.evento_id && <span className="text-xs text-green-600">✓ Agenda</span>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -273,10 +293,46 @@ export default function Reunioes() {
                     <span className="text-gray-700">{reuniaoAberta.data ? formatData(reuniaoAberta.data) : '—'}</span>
                   )}
                 </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Tipo</label>
+                  {editandoCabecalho ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditTipo('presencial')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${editTipo === 'presencial' ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                        <MapPin size={13} /> Presencial
+                      </button>
+                      <button onClick={() => setEditTipo('online')}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${editTipo === 'online' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                        <Video size={13} /> Online
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${reuniaoAberta.tipo === 'online' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>
+                      {reuniaoAberta.tipo === 'online' ? <><Video size={12} /> Online</> : <><MapPin size={12} /> Presencial</>}
+                    </span>
+                  )}
+                </div>
               </div>
 
+              {/* Link videochamada */}
+              {editandoCabecalho && editTipo === 'online' && (
+                <div className="mt-3">
+                  <label className="text-xs text-gray-500 block mb-1">Link da videochamada</label>
+                  <input className="input text-sm" placeholder="https://meet.google.com/..." value={editLinkVideo}
+                    onChange={e => setEditLinkVideo(e.target.value)} />
+                </div>
+              )}
+              {!editandoCabecalho && reuniaoAberta.tipo === 'online' && reuniaoAberta.link_video && (
+                <div className="mt-3">
+                  <a href={reuniaoAberta.link_video} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition-colors">
+                    <Link2 size={14} /> Entrar na videochamada
+                  </a>
+                </div>
+              )}
+
               {editandoCabecalho && (
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2 mt-4">
                   <button onClick={() => setEditandoCabecalho(false)} className="btn-secondary text-sm py-1.5">Cancelar</button>
                   <button onClick={salvarReuniao} disabled={saving} className="btn-primary text-sm py-1.5">Salvar</button>
                 </div>
@@ -295,24 +351,24 @@ export default function Reunioes() {
               />
             </div>
 
-            {/* Lançar na agenda */}
+            {/* Ações */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-700">Agenda</h2>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {reuniaoAberta.evento_id ? 'Esta reunião já está na agenda.' : 'Adicione esta reunião à agenda.'}
-                  </p>
-                </div>
+              <h2 className="text-sm font-semibold text-gray-700 mb-3">Ações</h2>
+              <div className="flex flex-wrap gap-3">
                 {reuniaoAberta.evento_id ? (
-                  <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
-                    <Calendar size={16} /> Na agenda
+                  <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium px-3 py-2 bg-green-50 rounded-lg">
+                    <Calendar size={15} /> Na agenda
                   </span>
                 ) : (
-                  <button onClick={lancarNaAgenda} disabled={saving} className="btn-primary flex items-center gap-2 text-sm py-2">
-                    <Calendar size={16} /> Lançar na agenda
+                  <button onClick={lancarNaAgenda} disabled={saving}
+                    className="flex items-center gap-2 px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-medium transition-colors">
+                    <Calendar size={15} /> Lançar na agenda
                   </button>
                 )}
+                <button onClick={abrirWhatsApp}
+                  className="flex items-center gap-2 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors">
+                  <MessageCircle size={15} /> Enviar lembrete no WhatsApp
+                </button>
               </div>
             </div>
 
@@ -385,6 +441,19 @@ export default function Reunioes() {
                   style={{ backgroundColor: pastaSelecionada.cor }}>
                   {pastaSelecionada.nome}
                 </span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo</label>
+                <div className="flex gap-2">
+                  <button onClick={() => setFormReuniao(f => ({ ...f, tipo: 'presencial' }))}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${formReuniao.tipo === 'presencial' ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                    <MapPin size={14} /> Presencial
+                  </button>
+                  <button onClick={() => setFormReuniao(f => ({ ...f, tipo: 'online' }))}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${formReuniao.tipo === 'online' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:border-gray-400'}`}>
+                    <Video size={14} /> Online
+                  </button>
+                </div>
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">

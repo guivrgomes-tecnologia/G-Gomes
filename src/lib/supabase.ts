@@ -99,6 +99,8 @@ export type Reuniao = {
   pasta_id: string
   pauta: string | null
   transcricao: string | null
+  tipo: 'presencial' | 'online'
+  link_video: string | null
   evento_id: string | null
   criado_por: string
   created_at: string
