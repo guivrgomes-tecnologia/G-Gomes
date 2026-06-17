@@ -224,7 +224,7 @@ export default function Dashboard() {
                     const atrasado = !ev.concluido && !ev.dia_inteiro && new Date(ev.data_inicio) < new Date()
                     return (
                       <li key={ev.id} onClick={() => setEventoAtivo(ev)}
-                        className={`flex items-center gap-2 px-5 cursor-pointer transition-colors ${ev.concluido ? 'py-1.5 hover:bg-gray-50' : atrasado ? 'py-3 bg-red-50 hover:bg-red-100' : 'py-3 hover:bg-gray-50'}`}>
+                        className={`flex items-center gap-2 px-5 cursor-pointer transition-colors ${ev.concluido ? 'py-1.5 bg-green-50 hover:bg-green-100' : atrasado ? 'py-3 bg-red-50 hover:bg-red-100' : 'py-3 hover:bg-gray-50'}`}>
                         <div className={`rounded-full shrink-0 transition-all ${ev.concluido ? 'w-1 h-4 opacity-40' : 'w-1 h-10'}`} style={{ backgroundColor: ev.cor }} />
                         <div className="flex-1 min-w-0">
                           <p className={`truncate ${ev.concluido ? 'text-xs text-gray-400 line-through' : 'text-sm font-medium text-gray-900'}`}>
