@@ -80,4 +80,14 @@ export type Pendencia = {
   para_usuario?: Profile
   setor?: Setor
   pendencia_participantes?: { usuario_id: string; profile: Profile }[]
+  pendencia_tarefas?: PendenciaTarefa[]
+}
+
+export type PendenciaTarefa = {
+  id: string
+  pendencia_id: string
+  texto: string
+  concluida: boolean
+  ordem: number
+  created_at: string
 }

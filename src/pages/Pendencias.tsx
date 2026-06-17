@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus, Pencil } from 'lucide-react'
-import { supabase, Pendencia, Profile, Setor } from '../lib/supabase'
+import { Plus, X, AlertCircle, ChevronDown, ArrowRight, CalendarPlus, Pencil, CheckSquare, Square, Trash2 } from 'lucide-react'
+import { supabase, Pendencia, Profile, Setor, PendenciaTarefa } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams } from 'react-router-dom'
 
@@ -92,6 +92,8 @@ export default function Pendencias() {
   const [criandoEvento, setCriandoEvento] = useState<string | null>(null)
   const [editando, setEditando] = useState<Pendencia | null>(null)
   const [editForm, setEditForm] = useState<FormState>(FORM_INITIAL)
+  const [novasTarefas, setNovasTarefas] = useState<Record<string, string>>({})
+  const [tarefasExpandidas, setTarefasExpandidas] = useState<Record<string, PendenciaTarefa[]>>({})
 
   useEffect(() => {
     loadData()
@@ -101,7 +103,7 @@ export default function Pendencias() {
 
   async function loadData() {
     const [{ data: pends }, { data: perfis }, { data: setsData }] = await Promise.all([
-      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*), pendencia_participantes(usuario_id, profile:profiles(*))').order('created_at', { ascending: false }),
+      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*), pendencia_participantes(usuario_id, profile:profiles(*)), pendencia_tarefas(*)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('nome'),
       supabase.from('setores').select('*').order('nome'),
     ])
@@ -158,6 +160,30 @@ export default function Pendencias() {
     }).eq('id', editando.id)
     await salvarParticipantes(editando.id, editForm.para_usuario_ids)
     setSaving(false); setEditando(null); loadData()
+  }
+
+  async function adicionarTarefa(pendenciaId: string) {
+    const texto = (novasTarefas[pendenciaId] ?? '').trim()
+    if (!texto) return
+    const tarefasAtuais = tarefasExpandidas[pendenciaId] ?? []
+    await supabase.from('pendencia_tarefas').insert({ pendencia_id: pendenciaId, texto, ordem: tarefasAtuais.length })
+    setNovasTarefas(prev => ({ ...prev, [pendenciaId]: '' }))
+    recarregarTarefas(pendenciaId)
+  }
+
+  async function toggleTarefa(tarefa: PendenciaTarefa) {
+    await supabase.from('pendencia_tarefas').update({ concluida: !tarefa.concluida }).eq('id', tarefa.id)
+    recarregarTarefas(tarefa.pendencia_id)
+  }
+
+  async function deletarTarefa(tarefa: PendenciaTarefa) {
+    await supabase.from('pendencia_tarefas').delete().eq('id', tarefa.id)
+    recarregarTarefas(tarefa.pendencia_id)
+  }
+
+  async function recarregarTarefas(pendenciaId: string) {
+    const { data } = await supabase.from('pendencia_tarefas').select('*').eq('pendencia_id', pendenciaId).order('ordem')
+    setTarefasExpandidas(prev => ({ ...prev, [pendenciaId]: data ?? [] }))
   }
 
   async function atualizarStatus(id: string, status: Pendencia['status']) {
@@ -331,7 +357,11 @@ export default function Pendencias() {
 
           return (
             <div key={pend.id} className={`card overflow-hidden ${isAtrasado(pend) ? 'border-red-300' : ''}`}>
-              <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => setExpandido(expandido === pend.id ? null : pend.id)}>
+              <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => {
+                const abrindo = expandido !== pend.id
+                setExpandido(abrindo ? pend.id : null)
+                if (abrindo) recarregarTarefas(pend.id)
+              }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <p className="font-medium text-gray-900">{pend.titulo}</p>
@@ -361,8 +391,56 @@ export default function Pendencias() {
               </div>
 
               {expandido === pend.id && (
-                <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-                  {pend.descricao && <p className="text-sm text-gray-600 mb-3">{pend.descricao}</p>}
+                <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
+                  {pend.descricao && <p className="text-sm text-gray-600">{pend.descricao}</p>}
+
+                  {/* Lista de tarefas */}
+                  <div>
+                    {(() => {
+                      const tarefas = tarefasExpandidas[pend.id] ?? (pend.pendencia_tarefas ?? []) as PendenciaTarefa[]
+                      const total = tarefas.length
+                      const concluidas = tarefas.filter(t => t.concluida).length
+                      return (
+                        <div className="space-y-1.5">
+                          {total > 0 && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <p className="text-xs font-medium text-gray-500">Tarefas</p>
+                              <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                                <div className="bg-green-500 h-1.5 rounded-full transition-all" style={{ width: `${total === 0 ? 0 : (concluidas / total) * 100}%` }} />
+                              </div>
+                              <span className="text-xs text-gray-400">{concluidas}/{total}</span>
+                            </div>
+                          )}
+                          {tarefas.map(t => (
+                            <div key={t.id} className="flex items-center gap-2 group">
+                              <button onClick={() => toggleTarefa(t)} className="shrink-0 text-gray-400 hover:text-green-600 transition-colors">
+                                {t.concluida ? <CheckSquare size={16} className="text-green-500" /> : <Square size={16} />}
+                              </button>
+                              <span className={`flex-1 text-sm ${t.concluida ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.texto}</span>
+                              <button onClick={() => deletarTarefa(t)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              className="flex-1 text-sm border-b border-gray-200 focus:border-brand-400 outline-none py-1 bg-transparent placeholder-gray-300"
+                              placeholder="+ Adicionar tarefa"
+                              value={novasTarefas[pend.id] ?? ''}
+                              onChange={e => setNovasTarefas(prev => ({ ...prev, [pend.id]: e.target.value }))}
+                              onKeyDown={e => e.key === 'Enter' && adicionarTarefa(pend.id)}
+                            />
+                            {(novasTarefas[pend.id] ?? '').trim() && (
+                              <button onClick={() => adicionarTarefa(pend.id)} className="text-xs text-brand-600 font-medium hover:underline">
+                                Adicionar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
                     {(['aberta', 'em_andamento', 'resolvida'] as Pendencia['status'][]).map(s => (
                       <button key={s} disabled={pend.status === s} onClick={() => atualizarStatus(pend.id, s)}
@@ -387,6 +465,7 @@ export default function Pendencias() {
                   </div>
                 </div>
               )}
+
             </div>
           )
         })}
