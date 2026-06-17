@@ -179,11 +179,6 @@ export default function Agenda() {
     loadParticipantes(ev.id)
   }
 
-  function aplicarCategoria(categoriaId: string, setF: (fn: (f: any) => any) => void) {
-    const cat = categorias.find(c => c.id === categoriaId)
-    setF(f => ({ ...f, categoria_id: categoriaId, cor: cat?.cor ?? f.cor }))
-  }
-
   async function salvarNovo() {
     if (!form.titulo || !form.data_inicio) return
     setSaving(true)
