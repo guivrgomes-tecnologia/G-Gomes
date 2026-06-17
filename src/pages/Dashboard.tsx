@@ -72,8 +72,8 @@ export default function Dashboard() {
     const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', segStr).lte('data_inicio', domStr + 'T23:59:59'),
-      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
-      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
+      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']),
+      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']),
     ])
     setStats({
       eventosAmanha:      evAmanha.count ?? 0,
@@ -142,58 +142,60 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* Eventos hoje */}
-          <div className="card overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                <Calendar size={16} className="text-brand-500" /> Hoje
-              </h2>
-              <Link to="/agenda" className="text-sm text-brand-600 hover:underline">Ver agenda →</Link>
+          {/* Layout: calendário + stats */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Eventos hoje */}
+            <div className="card overflow-hidden lg:col-span-2">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Calendar size={16} className="text-brand-500" /> Hoje
+                </h2>
+                <Link to="/agenda" className="text-sm text-brand-600 hover:underline">Ver agenda →</Link>
+              </div>
+
+              {eventosHoje.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-gray-400 text-center">Nenhum evento hoje</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {eventosHoje.map(ev => {
+                    const hora = ev.dia_inteiro
+                      ? 'Dia inteiro'
+                      : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                    return (
+                      <li key={ev.id}
+                        onClick={() => navigate('/agenda')}
+                        className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
+                        <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium text-gray-900 truncate ${ev.concluido ? 'line-through text-gray-400' : ''}`}>
+                            {ev.titulo}
+                          </p>
+                          {ev.descricao && <p className="text-xs text-gray-400 truncate">{ev.descricao}</p>}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+                          <Clock size={11} />
+                          {hora}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
             </div>
 
-            {eventosHoje.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-gray-400 text-center">Nenhum evento hoje</p>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {eventosHoje.map(ev => {
-                  const hora = ev.dia_inteiro
-                    ? 'Dia inteiro'
-                    : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                  return (
-                    <li key={ev.id}
-                      onClick={() => navigate('/agenda')}
-                      className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
-                      <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium text-gray-900 truncate ${ev.concluido ? 'line-through text-gray-400' : ''}`}>
-                          {ev.titulo}
-                        </p>
-                        {ev.descricao && <p className="text-xs text-gray-400 truncate">{ev.descricao}</p>}
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
-                        <Clock size={11} />
-                        {hora}
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
+            {/* Cards de estatísticas */}
+            <div className="lg:col-span-3 grid grid-cols-2 gap-4 content-start">
+              {cards.map(({ label, value, icon: Icon, color, link }) => (
+                <Link key={label} to={link} className="card p-6 hover:shadow-md transition-shadow">
+                  <div className={`inline-flex p-2.5 rounded-lg ${color} mb-4`}>
+                    <Icon size={20} />
+                  </div>
+                  <p className="text-3xl font-bold text-gray-900">{value}</p>
+                  <p className="text-sm text-gray-500 mt-1">{label}</p>
+                </Link>
+              ))}
+            </div>
           </div>
-
-          {/* Cards de estatísticas */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {cards.map(({ label, value, icon: Icon, color, link }) => (
-              <Link key={label} to={link} className="card p-6 hover:shadow-md transition-shadow">
-                <div className={`inline-flex p-2.5 rounded-lg ${color} mb-4`}>
-                  <Icon size={20} />
-                </div>
-                <p className="text-3xl font-bold text-gray-900">{value}</p>
-                <p className="text-sm text-gray-500 mt-1">{label}</p>
-              </Link>
-            ))}
-          </div>
-
         </div>
       )}
     </div>

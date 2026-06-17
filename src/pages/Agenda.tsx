@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video, AlertCircle } from 'lucide-react'
 import { supabase, Evento, Profile, CategoriaEvento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
@@ -112,6 +112,7 @@ export default function Agenda() {
 
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
   const [reuniaoVinculada, setReuniaoVinculada] = useState<{ id: string; pasta_id: string } | null>(null)
+  const [pendenciaVinculada, setPendenciaVinculada] = useState<{ id: string; titulo: string } | null>(null)
   const [editando, setEditando] = useState(false)
   const [editForm, setEditForm] = useState<Partial<FormState>>({})
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
@@ -208,9 +209,12 @@ export default function Agenda() {
     setEventoAtivo(ev)
     setEditando(false)
     setReuniaoVinculada(null)
+    setPendenciaVinculada(null)
     loadParticipantes(ev.id)
-    const { data } = await supabase.from('reunioes').select('id, pasta_id').eq('evento_id', ev.id).maybeSingle()
-    if (data) setReuniaoVinculada(data)
+    const { data: reunData } = await supabase.from('reunioes').select('id, pasta_id').eq('evento_id', ev.id).maybeSingle()
+    if (reunData) setReuniaoVinculada(reunData)
+    const { data: pendData } = await supabase.from('pendencias').select('id, titulo').eq('evento_id', ev.id).maybeSingle()
+    if (pendData) setPendenciaVinculada(pendData)
   }
 
   async function salvarNovo() {
@@ -563,6 +567,14 @@ export default function Agenda() {
                   onClick={() => { setEventoAtivo(null); navigate('/reunioes') }}
                   className="w-full flex items-center gap-2 px-3 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-sm font-medium transition-colors border border-purple-200">
                   <Video size={15} /> Ver reunião vinculada
+                </button>
+              )}
+              {pendenciaVinculada && (
+                <button
+                  onClick={() => { setEventoAtivo(null); navigate('/pendencias') }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-sm font-medium transition-colors border border-red-200">
+                  <AlertCircle size={15} />
+                  <span className="flex-1 text-left truncate">Pendência: {pendenciaVinculada.titulo}</span>
                 </button>
               )}
               {ev.concluido && (

@@ -74,6 +74,7 @@ export type Pendencia = {
   de_usuario_id: string
   para_usuario_id: string
   setor_id: string | null
+  evento_id: string | null
   prazo: string | null
   criado_por: string
   created_at: string
