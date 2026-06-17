@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin } from 'lucide-react'
-import { supabase, Evento } from '../lib/supabase'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin, Flame, ArrowRight } from 'lucide-react'
+import { supabase, Evento, Pendencia } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -16,6 +16,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
+  const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
 
@@ -55,6 +56,15 @@ export default function Dashboard() {
     }
 
     setEventosHoje([...(meusHoje ?? []), ...extrasHoje].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
+
+    const { data: alta } = await supabase
+      .from('pendencias')
+      .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)')
+      .eq('prioridade', 'alta')
+      .in('status', ['aberta', 'em_andamento'])
+      .or(`para_usuario_id.eq.${profile!.id},de_usuario_id.eq.${profile!.id}`)
+      .order('created_at', { ascending: false })
+    setPendenciasAlta(alta ?? [])
 
     const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
       supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
@@ -187,10 +197,43 @@ export default function Dashboard() {
               ))}
             </div>
           </div>
+
+          {/* Pendências alta prioridade */}
+          {pendenciasAlta.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-red-100 bg-red-50">
+                <h2 className="font-semibold text-red-700 flex items-center gap-2">
+                  <Flame size={16} /> Prioridade alta
+                  <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{pendenciasAlta.length}</span>
+                </h2>
+                <Link to="/pendencias" className="text-sm text-red-600 hover:underline flex items-center gap-1">Ver todas <ArrowRight size={13} /></Link>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {pendenciasAlta.map(p => {
+                  const euSouDest = p.para_usuario_id === profile?.id
+                  return (
+                    <li key={p.id} onClick={() => navigate('/pendencias')}
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{p.titulo}</p>
+                        <p className="text-xs text-gray-400 truncate">
+                          {euSouDest ? `De: ${(p.de_usuario as any)?.nome?.split(' ')[0]}` : `Para: ${(p.para_usuario as any)?.nome?.split(' ')[0]}`}
+                        </p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${p.status === 'aberta' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {p.status === 'aberta' ? 'A resolver' : 'Em andamento'}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
       {/* Modal detalhe do evento */}
+
       {eventoAtivo && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEventoAtivo(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
