@@ -61,7 +61,8 @@ export default function Admin() {
   }
 
   async function salvarEdicao(id: string) {
-    await supabase.from('profiles').update({ nome: editForm.nome, cargo: editForm.cargo || null, modulos: editForm.modulos }).eq('id', id)
+    const { error } = await supabase.from('profiles').update({ nome: editForm.nome, cargo: editForm.cargo || null, modulos: editForm.modulos }).eq('id', id)
+    if (error) { alert('Erro ao salvar: ' + error.message); return }
     setEditando(null)
     await load()
   }
