@@ -107,6 +107,7 @@ export default function Agenda() {
   const [showNovo, setShowNovo] = useState(false)
   const [showSync, setShowSync] = useState(false)
   const [showCats, setShowCats] = useState(false)
+  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(FORM_INITIAL)
   const [saving, setSaving] = useState(false)
 
@@ -430,7 +431,7 @@ export default function Agenda() {
           const evs = eventosNaData(ds)
           const isTd = isHoje(ds)
           return (
-            <div key={dia} onClick={() => abrirNovo(ds)}
+            <div key={dia} onClick={() => setDiaSelecionado(ds)}
               className={`border-b border-r border-gray-100 min-h-[100px] p-2 cursor-pointer hover:bg-gray-50 transition-colors ${(firstDay + dia - 1) % 7 === 6 ? 'border-r-0' : ''}`}>
               <span className={`inline-flex items-center justify-center w-7 h-7 text-sm font-medium rounded-full ${isTd ? 'bg-brand-600 text-white' : 'text-gray-700'}`}>{dia}</span>
               <div className="mt-1 space-y-0.5">
@@ -843,6 +844,60 @@ export default function Agenda() {
           </div>
         </div>
       )}
+
+      {/* Modal eventos do dia */}
+      {diaSelecionado && (() => {
+        const evsDia = eventosNaData(diaSelecionado).sort((a, b) => {
+          if (a.dia_inteiro && !b.dia_inteiro) return -1
+          if (!a.dia_inteiro && b.dia_inteiro) return 1
+          return a.data_inicio.localeCompare(b.data_inicio)
+        })
+        const dataFmt = new Date(diaSelecionado + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setDiaSelecionado(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <div>
+                  <h3 className="font-semibold text-gray-900 capitalize">{dataFmt}</h3>
+                  <p className="text-xs text-gray-400">{evsDia.length === 0 ? 'Nenhum evento' : `${evsDia.length} evento${evsDia.length > 1 ? 's' : ''}`}</p>
+                </div>
+                <button onClick={() => setDiaSelecionado(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <div className="overflow-y-auto flex-1">
+                {evsDia.length === 0 ? (
+                  <p className="px-5 py-8 text-sm text-gray-400 text-center">Nenhum evento neste dia</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {evsDia.map(ev => {
+                      const hora = ev.dia_inteiro
+                        ? 'Dia inteiro'
+                        : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                          + (ev.data_fim ? ' – ' + new Date(ev.data_fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '')
+                      return (
+                        <li key={ev.id} onClick={() => { setDiaSelecionado(null); abrirEvento(ev, { stopPropagation: () => {} } as any) }}
+                          className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 cursor-pointer transition-colors">
+                          <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${ev.concluido ? 'line-through text-gray-400' : 'text-gray-900'}`}>{ev.titulo}</p>
+                            <p className="text-xs text-gray-400">{hora}</p>
+                          </div>
+                          {ev.concluido && <CheckCircle2 size={14} className="text-green-500 shrink-0" />}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+              <div className="px-5 py-4 border-t border-gray-100">
+                <button onClick={() => { setDiaSelecionado(null); abrirNovo(diaSelecionado) }}
+                  className="w-full btn-primary flex items-center justify-center gap-2 text-sm">
+                  <Plus size={15} /> Novo evento neste dia
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
