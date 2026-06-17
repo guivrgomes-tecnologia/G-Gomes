@@ -367,7 +367,9 @@ export default function Pendencias() {
     return matchAba && matchSetor && matchStatus
   })
 
-  const isAtrasado = (p: Pendencia) => p.prazo && new Date(p.prazo) < new Date() && p.status !== 'resolvida'
+  // datas sem hora (ex: "2026-06-17") precisam de T12:00 para não virarem dia anterior no UTC-3
+  function parsePrazo(prazo: string) { return new Date(prazo.includes('T') ? prazo : prazo + 'T12:00:00') }
+  const isAtrasado = (p: Pendencia) => p.prazo && parsePrazo(p.prazo) < new Date() && p.status !== 'resolvida'
   const countComigo = pendencias.filter(p => isParticipante(p) && p.status !== 'resolvida').length
 
   // Contagens por status para a aba atual
@@ -381,7 +383,7 @@ export default function Pendencias() {
   }, {} as Record<string, number>)
 
   function formatPrazo(prazo: string) {
-    const d = new Date(prazo)
+    const d = parsePrazo(prazo)
     return prazo.includes('T')
       ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
       : d.toLocaleDateString('pt-BR')
