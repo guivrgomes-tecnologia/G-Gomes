@@ -117,30 +117,30 @@ export default function Dashboard() {
         <div className="space-y-6">
           {/* Ações rápidas */}
           <div className="grid grid-cols-3 gap-2 sm:gap-4">
-            <Link to="/agenda?novo=1" className="card p-3 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
-                <Plus size={16} className="text-indigo-600" />
+            <Link to="/agenda?novo=1" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
+              <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={13} className="text-indigo-600" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-semibold text-gray-800">Novo evento</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-800 leading-tight">Novo<br className="sm:hidden"/> evento</p>
                 <p className="text-xs text-gray-400 hidden sm:block">Adicionar à agenda</p>
               </div>
             </Link>
-            <Link to="/pendencias?novo=1" className="card p-3 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
-                <Plus size={16} className="text-red-500" />
+            <Link to="/pendencias?novo=1" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
+              <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={13} className="text-red-500" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-semibold text-gray-800">Nova pendência</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-800 leading-tight">Nova<br className="sm:hidden"/> pendência</p>
                 <p className="text-xs text-gray-400 hidden sm:block">Criar e atribuir</p>
               </div>
             </Link>
-            <Link to="/reunioes" className="card p-3 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center shrink-0 transition-colors">
-                <Video size={16} className="text-purple-600" />
+            <Link to="/reunioes" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
+              <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center shrink-0 transition-colors">
+                <Video size={13} className="text-purple-600" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-semibold text-gray-800">Nova reunião</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-800 leading-tight">Nova<br className="sm:hidden"/> reunião</p>
                 <p className="text-xs text-gray-400 hidden sm:block">Organizar reunião</p>
               </div>
             </Link>
