@@ -84,6 +84,28 @@ export type Pendencia = {
   pendencia_tarefas?: PendenciaTarefa[]
 }
 
+export type ReuniaPasta = {
+  id: string
+  nome: string
+  cor: string
+  criado_por: string | null
+  created_at: string
+}
+
+export type Reuniao = {
+  id: string
+  titulo: string
+  data: string | null
+  pasta_id: string
+  pauta: string | null
+  transcricao: string | null
+  evento_id: string | null
+  criado_por: string
+  created_at: string
+  updated_at: string
+  pasta?: ReuniaPasta
+}
+
 export type PendenciaTarefa = {
   id: string
   pendencia_id: string

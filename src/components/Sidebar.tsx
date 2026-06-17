@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff } from 'lucide-react'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
@@ -8,6 +8,7 @@ const links = [
   { to: '/agenda',    label: 'Agenda',      icon: Calendar },
   { to: '/processos', label: 'Processos',   icon: ClipboardList },
   { to: '/pendencias',label: 'Pendências',  icon: AlertCircle },
+  { to: '/reunioes',  label: 'Reuniões',    icon: Video },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
