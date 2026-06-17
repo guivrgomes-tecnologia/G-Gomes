@@ -159,7 +159,7 @@ export default function Dashboard() {
               {eventosHoje.length === 0 ? (
                 <p className="px-5 py-6 text-sm text-gray-400 text-center">Nenhum evento hoje</p>
               ) : (
-                <ul className="divide-y divide-gray-100">
+                <ul className="divide-y divide-gray-100 max-h-[168px] lg:max-h-none overflow-y-auto">
                   {eventosHoje.map(ev => {
                     const hora = ev.dia_inteiro
                       ? 'Dia inteiro'
@@ -198,7 +198,7 @@ export default function Dashboard() {
               {pendenciasAlta.length === 0 ? (
                 <p className="px-4 py-5 text-xs text-gray-400 text-center">Nenhuma pendência urgente</p>
               ) : (
-                <ul className="divide-y divide-gray-100">
+                <ul className="divide-y divide-gray-100 max-h-[132px] lg:max-h-none overflow-y-auto">
                   {pendenciasAlta.map(p => {
                     const euSouDest = p.para_usuario_id === profile?.id
                     return (
