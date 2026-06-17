@@ -86,7 +86,7 @@ export default function Dashboard() {
 
   const cards = [
     { label: 'Eventos amanhã',      value: stats.eventosAmanha,     icon: Calendar,     color: 'bg-indigo-50 text-indigo-600', link: '/agenda' },
-    { label: 'Eventos esta semana', value: stats.eventosSemana,     icon: Calendar,     color: 'bg-sky-50 text-sky-600',       link: '/agenda' },
+    { label: 'Eventos esta semana', value: stats.eventosSemana,     icon: Calendar,     color: 'bg-sky-50 text-sky-600',       link: '/agenda?view=semana' },
     { label: 'Processos em aberto', value: stats.processosAbertos,  icon: ClipboardList,color: 'bg-yellow-50 text-yellow-600', link: '/processos' },
     { label: 'Pendências comigo',   value: stats.pendenciasMinhas,  icon: AlertCircle,  color: 'bg-red-50 text-red-600',       link: '/pendencias' },
     { label: 'Processos atrasados', value: stats.processosAtrasados,icon: TrendingUp,   color: 'bg-orange-50 text-orange-600', link: '/processos' },

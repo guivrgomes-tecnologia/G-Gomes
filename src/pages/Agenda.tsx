@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2 } from 'lucide-react'
 import { supabase, Evento, Profile } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useSearchParams } from 'react-router-dom'
 import GoogleCalendarSync from '../components/GoogleCalendarSync'
 
 const CORES = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
@@ -68,9 +69,11 @@ export default function Agenda() {
   const { user } = useAuth()
   const [eventos, setEventos] = useState<Evento[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
-  const [view, setView] = useState<View>('mes')
+  const [searchParams] = useSearchParams()
+  const [view, setView] = useState<View>((searchParams.get('view') as View) ?? 'mes')
   const [hoje] = useState(new Date())
   const [cursor, setCursor] = useState(new Date())
+  const semanaRef = useRef<HTMLDivElement>(null)
 
   const [showNovo, setShowNovo] = useState(false)
   const [showSync, setShowSync] = useState(false)
@@ -83,6 +86,14 @@ export default function Agenda() {
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
 
   useEffect(() => { loadEventos(); loadEquipe() }, [cursor, view])
+
+  useEffect(() => {
+    if (view === 'semana' && semanaRef.current) {
+      const hora = new Date().getHours()
+      const alvo = Math.max(0, hora - 1)
+      semanaRef.current.scrollTop = alvo * 56
+    }
+  }, [view])
 
   async function loadEquipe() {
     const { data } = await supabase.from('profiles').select('*').order('nome')
@@ -304,7 +315,7 @@ export default function Agenda() {
     const seg = getMondayOf(cursor)
     const dias = Array.from({ length: 7 }, (_, i) => addDays(seg, i))
     return (
-      <div className="overflow-auto max-h-[70vh]">
+      <div ref={semanaRef} className="overflow-auto max-h-[70vh]">
         <div className="grid grid-cols-8 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div className="py-3 px-2" />
           {dias.map((d, i) => {
