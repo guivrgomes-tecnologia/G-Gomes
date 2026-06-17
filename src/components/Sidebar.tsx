@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2 } from 'lucide-react'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { usePushNotifications } from '../hooks/usePushNotifications'
 
 const links = [
   { to: '/',          label: 'Dashboard',   icon: LayoutDashboard },
@@ -12,6 +13,7 @@ const links = [
 export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const { status, loading, ativar, desativar } = usePushNotifications()
 
   async function handleSignOut() {
     await signOut()
@@ -63,6 +65,17 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
             <p className="text-brand-300 text-xs truncate">{profile?.cargo ?? ''}</p>
           </div>
         </div>
+        {status !== 'unsupported' && (
+          <button
+            onClick={status === 'granted' ? desativar : ativar}
+            disabled={loading || status === 'denied'}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-brand-200 hover:text-white hover:bg-brand-800 rounded-lg transition-colors disabled:opacity-40 mb-1"
+            title={status === 'denied' ? 'Notificações bloqueadas no browser' : ''}
+          >
+            {status === 'granted' ? <BellOff size={16} /> : <Bell size={16} />}
+            {loading ? 'Aguarde...' : status === 'granted' ? 'Desativar notificações' : status === 'denied' ? 'Notificações bloqueadas' : 'Ativar notificações'}
+          </button>
+        )}
         <button
           onClick={handleSignOut}
           className="flex items-center gap-2 w-full px-3 py-2 text-sm text-brand-200 hover:text-white hover:bg-brand-800 rounded-lg transition-colors"

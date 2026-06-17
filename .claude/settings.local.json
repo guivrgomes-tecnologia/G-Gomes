@@ -11,7 +11,10 @@
       "Bash(git commit *)",
       "Bash(git branch *)",
       "Bash(git remote *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(npx tsc *)",
+      "Bash(npx web-push *)",
+      "Bash(npx --yes web-push generate-vapid-keys --urlsafe-base64)"
     ]
   }
 }
