@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { ReuniaPasta, Reuniao } from '../lib/supabase'
-import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle } from 'lucide-react'
+import { Plus, FolderOpen, Folder, ChevronRight, Calendar, Trash2, X, Edit2, Link2, MapPin, Video, MessageCircle, Copy } from 'lucide-react'
 
 const CORES = ['#6366f1','#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6']
 
@@ -142,6 +142,21 @@ export default function Reunioes() {
     }
     setSaving(false)
     alert('Evento criado na agenda!')
+  }
+
+  async function duplicarReuniao() {
+    if (!reuniaoAberta || !pastaSelecionada) return
+    setSaving(true)
+    const { data: nova } = await supabase.from('reunioes').insert({
+      titulo: `${reuniaoAberta.titulo} (cópia)`,
+      pasta_id: reuniaoAberta.pasta_id,
+      tipo: reuniaoAberta.tipo,
+      link_video: reuniaoAberta.link_video,
+      criado_por: user!.id,
+    }).select().single()
+    await loadReunioes(pastaSelecionada.id)
+    if (nova) abrirReuniao(nova)
+    setSaving(false)
   }
 
   async function deletarReuniao(id: string) {
@@ -368,6 +383,10 @@ export default function Reunioes() {
                 <button onClick={abrirWhatsApp}
                   className="flex items-center gap-2 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors">
                   <MessageCircle size={15} /> Enviar lembrete no WhatsApp
+                </button>
+                <button onClick={duplicarReuniao} disabled={saving}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors">
+                  <Copy size={15} /> Duplicar reunião
                 </button>
               </div>
             </div>
