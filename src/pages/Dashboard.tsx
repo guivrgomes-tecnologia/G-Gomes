@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video } from 'lucide-react'
 import { supabase, Evento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -112,7 +112,7 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-6">
           {/* Ações rápidas */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <Link to="/agenda?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
               <div className="w-10 h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
                 <Plus size={18} className="text-indigo-600" />
@@ -129,6 +129,15 @@ export default function Dashboard() {
               <div>
                 <p className="text-sm font-semibold text-gray-800">Nova pendência</p>
                 <p className="text-xs text-gray-400">Criar e atribuir</p>
+              </div>
+            </Link>
+            <Link to="/reunioes" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center shrink-0 transition-colors">
+                <Video size={18} className="text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Nova reunião</p>
+                <p className="text-xs text-gray-400">Organizar reunião</p>
               </div>
             </Link>
           </div>
