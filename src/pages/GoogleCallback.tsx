@@ -1,25 +1,37 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function GoogleCallback() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [status, setStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
+  const [erroMsg, setErroMsg] = useState('')
+  const tentou = useRef(false)
 
   useEffect(() => {
+    if (loading) return           // aguarda auth carregar
+    if (tentou.current) return    // evita rodar duas vezes
+    tentou.current = true
+
     const code = new URLSearchParams(window.location.search).get('code')
-    if (!code || !user) { setStatus('erro'); return }
+
+    if (!code) { setErroMsg('Código de autorização não encontrado.'); setStatus('erro'); return }
+    if (!user)  { setErroMsg('Usuário não autenticado.'); setStatus('erro'); return }
 
     supabase.functions.invoke('google-auth-callback', {
       body: { code, user_id: user.id },
-    }).then(({ error }) => {
-      if (error) { setStatus('erro'); return }
+    }).then(({ data, error }) => {
+      if (error || data?.error) {
+        setErroMsg(error?.message ?? data?.error ?? 'Erro desconhecido')
+        setStatus('erro')
+        return
+      }
       setStatus('ok')
       setTimeout(() => navigate('/agenda'), 2000)
     })
-  }, [user])
+  }, [loading, user])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -43,8 +55,9 @@ export default function GoogleCallback() {
         )}
         {status === 'erro' && (
           <>
-            <p className="text-red-600 font-semibold">Erro ao conectar</p>
-            <button onClick={() => navigate('/agenda')} className="btn-primary mt-4">Voltar para agenda</button>
+            <p className="text-red-600 font-semibold mb-2">Erro ao conectar</p>
+            {erroMsg && <p className="text-xs text-gray-500 mb-4">{erroMsg}</p>}
+            <button onClick={() => navigate('/agenda')} className="btn-primary">Voltar para agenda</button>
           </>
         )}
       </div>
