@@ -66,9 +66,12 @@ function SeletorUsuarios({ selecionados, equipe, userId, onChange }: {
   )
 }
 
+function localToISO(dt: string) { return new Date(dt).toISOString() }
+
 async function criarEventoDaPendencia(titulo: string, descricao: string | null, prazo: string, hora: string, userId: string) {
-  const dataInicio = hora ? `${prazo}T${hora}` : prazo
-  const dataFim = hora ? `${prazo}T${String(Number(hora.split(':')[0]) + 1).padStart(2, '0')}:${hora.split(':')[1]}` : null
+  const dataInicio = hora ? localToISO(`${prazo}T${hora}`) : prazo
+  const horaFim = hora ? `${String(Number(hora.split(':')[0]) + 1).padStart(2, '0')}:${hora.split(':')[1]}` : null
+  const dataFim = horaFim ? localToISO(`${prazo}T${horaFim}`) : null
   await supabase.from('eventos').insert({
     titulo, descricao: descricao || null,
     data_inicio: dataInicio, data_fim: dataFim,
