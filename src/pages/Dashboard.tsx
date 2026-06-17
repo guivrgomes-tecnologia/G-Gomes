@@ -147,9 +147,9 @@ export default function Dashboard() {
           </div>
 
           {/* Layout: calendário + stats */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Eventos hoje */}
-            <div className="card overflow-hidden lg:col-span-2">
+            <div className="card overflow-hidden lg:col-span-1">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                 <h2 className="font-semibold text-gray-900 flex items-center gap-2">
                   <Calendar size={16} className="text-brand-500" /> Hoje
@@ -184,8 +184,10 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Coluna direita: prioridades + stats */}
+            <div className="lg:col-span-2 flex flex-col gap-4">
             {/* Pendências alta prioridade */}
-            <div className="card overflow-hidden lg:col-span-1 self-start">
+            <div className="card overflow-hidden self-start w-1/2">
               <div className="flex items-center justify-between px-4 py-3 border-b border-red-100 bg-red-50">
                 <h2 className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
                   <Flame size={14} /> Alta prioridade
@@ -216,7 +218,7 @@ export default function Dashboard() {
             </div>
 
             {/* Cards de estatísticas */}
-            <div className="lg:col-span-2 grid grid-cols-2 gap-4 content-start">
+            <div className="grid grid-cols-2 gap-4">
               {cards.map(({ label, value, icon: Icon, color, link }) => (
                 <Link key={label} to={link} className="card p-5 hover:shadow-md transition-shadow">
                   <div className={`inline-flex p-2 rounded-lg ${color} mb-3`}>
@@ -226,6 +228,7 @@ export default function Dashboard() {
                   <p className="text-xs text-gray-500 mt-1">{label}</p>
                 </Link>
               ))}
+            </div>
             </div>
           </div>
         </div>
