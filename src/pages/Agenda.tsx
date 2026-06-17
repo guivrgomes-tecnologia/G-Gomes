@@ -66,6 +66,10 @@ function gerarDatasRecorrentes(base: string, rec: Recorrencia, ate: string): str
 function formatHora(iso: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
+// Converte datetime-local (sem fuso) para ISO com offset correto do browser
+function localDatetimeToISO(dt: string) {
+  return new Date(dt).toISOString()
+}
 function formatDataHora(ev: Evento) {
   if (ev.dia_inteiro) {
     return new Date(ev.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -207,10 +211,10 @@ export default function Agenda() {
   async function salvarNovo() {
     if (!form.titulo || !form.data_inicio) return
     setSaving(true)
-    const base = form.dia_inteiro ? form.data_inicio.split('T')[0] : form.data_inicio
+    const base = form.dia_inteiro ? form.data_inicio.split('T')[0] : localDatetimeToISO(form.data_inicio)
     const comum = {
       titulo: form.titulo, descricao: form.descricao || null,
-      data_fim: form.data_fim || null, dia_inteiro: form.dia_inteiro,
+      data_fim: form.data_fim ? localDatetimeToISO(form.data_fim) : null, dia_inteiro: form.dia_inteiro,
       cor: form.cor, categoria_id: form.categoria_id || null,
       criado_por: user!.id, concluido: false, lembrete_minutos: form.lembrete_minutos,
     }
@@ -255,7 +259,8 @@ export default function Agenda() {
       lembrete_minutos: editForm.lembrete_minutos ?? eventoAtivo.lembrete_minutos,
     }
     if (escopo === 'este') {
-      await supabase.from('eventos').update({ ...campos, data_inicio: editForm.data_inicio ?? eventoAtivo.data_inicio }).eq('id', eventoAtivo.id)
+      const di = editForm.data_inicio ?? eventoAtivo.data_inicio
+      await supabase.from('eventos').update({ ...campos, data_inicio: campos.dia_inteiro ? di.split('T')[0] : localDatetimeToISO(di) }).eq('id', eventoAtivo.id)
       await salvarParticipantes(eventoAtivo.id, editForm.participantes ?? participantesAtivos.map(p => p.id))
     } else if (escopo === 'proximos' && eventoAtivo.recorrencia_grupo) {
       await supabase.from('eventos').update(campos)
