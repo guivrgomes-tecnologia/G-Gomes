@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, X, Calendar, Pencil, Trash2, CheckCircle2, Users, Link2, Settings, Tag, Video } from 'lucide-react'
 import { supabase, Evento, Profile, CategoriaEvento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import GoogleCalendarSync from '../components/GoogleCalendarSync'
 
 const COR_PADRAO = '#0ea5e9'
@@ -94,6 +94,7 @@ function Avatar({ nome, size = 'sm' }: { nome: string; size?: 'sm' | 'md' }) {
 
 export default function Agenda() {
   const { user, profile } = useAuth()
+  const navigate = useNavigate()
   const [eventos, setEventos] = useState<Evento[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
   const [categorias, setCategorias] = useState<CategoriaEvento[]>([])
@@ -110,6 +111,7 @@ export default function Agenda() {
   const [saving, setSaving] = useState(false)
 
   const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
+  const [reuniaoVinculada, setReuniaoVinculada] = useState<{ id: string; pasta_id: string } | null>(null)
   const [editando, setEditando] = useState(false)
   const [editForm, setEditForm] = useState<Partial<FormState>>({})
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
@@ -201,11 +203,14 @@ export default function Agenda() {
     setShowNovo(true)
   }
 
-  function abrirEvento(ev: Evento, e: React.MouseEvent) {
+  async function abrirEvento(ev: Evento, e: React.MouseEvent) {
     e.stopPropagation()
     setEventoAtivo(ev)
     setEditando(false)
+    setReuniaoVinculada(null)
     loadParticipantes(ev.id)
+    const { data } = await supabase.from('reunioes').select('id, pasta_id').eq('evento_id', ev.id).maybeSingle()
+    if (data) setReuniaoVinculada(data)
   }
 
   async function salvarNovo() {
@@ -552,6 +557,13 @@ export default function Agenda() {
                     ))}
                   </div>
                 </div>
+              )}
+              {reuniaoVinculada && (
+                <button
+                  onClick={() => { setEventoAtivo(null); navigate('/reunioes') }}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-sm font-medium transition-colors border border-purple-200">
+                  <Video size={15} /> Ver reunião vinculada
+                </button>
               )}
               {ev.concluido && (
                 <p className="text-sm text-green-600 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-2">
