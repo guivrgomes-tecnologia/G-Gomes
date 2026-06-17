@@ -33,6 +33,7 @@ export type Evento = {
   cor: string
   concluido: boolean
   categoria_id: string | null
+  recorrencia_grupo: string | null
   criado_por: string
   created_at: string
   categoria?: CategoriaEvento

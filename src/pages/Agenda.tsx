@@ -92,6 +92,9 @@ export default function Agenda() {
   const [editForm, setEditForm] = useState<Partial<FormState>>({})
   const [participantesAtivos, setParticipantesAtivos] = useState<Profile[]>([])
 
+  // escopo de recorrência (deletar/editar)
+  const [modalEscopo, setModalEscopo] = useState<{ tipo: 'deletar' | 'editar' } | null>(null)
+
   // gerenciar categorias
   const [catNome, setCatNome] = useState('')
   const [catCor, setCatCor] = useState(CORES_PRESET[0])
@@ -191,8 +194,9 @@ export default function Agenda() {
     }
 
     if (form.recorrencia !== 'nao' && form.recorrencia_ate) {
+      const grupo = crypto.randomUUID()
       const datas = gerarDatasRecorrentes(base, form.recorrencia, form.recorrencia_ate)
-      const { data: inserted } = await supabase.from('eventos').insert(datas.map(d => ({ ...comum, data_inicio: d }))).select('id')
+      const { data: inserted } = await supabase.from('eventos').insert(datas.map(d => ({ ...comum, data_inicio: d, recorrencia_grupo: grupo }))).select('id')
       if (form.participantes.length > 0 && inserted) {
         const rows = inserted.flatMap((ev: { id: string }) => form.participantes.map(uid => ({ evento_id: ev.id, usuario_id: uid })))
         await supabase.from('evento_participantes').insert(rows)
@@ -206,20 +210,52 @@ export default function Agenda() {
     setSaving(false); setShowNovo(false); loadEventos()
   }
 
-  async function salvarEdicao() {
+  function pedirEscopo(tipo: 'deletar' | 'editar') {
+    if (eventoAtivo?.recorrencia_grupo) {
+      setModalEscopo({ tipo })
+    } else {
+      if (tipo === 'deletar') executarDeletar('este')
+      else executarEdicao('este')
+    }
+  }
+
+  async function executarEdicao(escopo: 'este' | 'proximos' | 'todos') {
     if (!eventoAtivo) return
+    if (!editando && escopo === 'este') { setModalEscopo(null); setEditando(true); return }
     setSaving(true)
-    await supabase.from('eventos').update({
-      titulo:      editForm.titulo      ?? eventoAtivo.titulo,
-      descricao:   editForm.descricao   ?? eventoAtivo.descricao,
-      data_inicio: editForm.data_inicio ?? eventoAtivo.data_inicio,
-      data_fim:    editForm.data_fim    ?? eventoAtivo.data_fim,
-      dia_inteiro: editForm.dia_inteiro ?? eventoAtivo.dia_inteiro,
-      cor:         editForm.cor         ?? eventoAtivo.cor,
+    const campos = {
+      titulo:       editForm.titulo      ?? eventoAtivo.titulo,
+      descricao:    editForm.descricao   ?? eventoAtivo.descricao,
+      data_fim:     editForm.data_fim    ?? eventoAtivo.data_fim,
+      dia_inteiro:  editForm.dia_inteiro ?? eventoAtivo.dia_inteiro,
+      cor:          editForm.cor         ?? eventoAtivo.cor,
       categoria_id: editForm.categoria_id !== undefined ? (editForm.categoria_id || null) : eventoAtivo.categoria_id,
-    }).eq('id', eventoAtivo.id)
-    await salvarParticipantes(eventoAtivo.id, editForm.participantes ?? participantesAtivos.map(p => p.id))
-    setSaving(false); setEventoAtivo(null); loadEventos()
+    }
+    if (escopo === 'este') {
+      await supabase.from('eventos').update({ ...campos, data_inicio: editForm.data_inicio ?? eventoAtivo.data_inicio }).eq('id', eventoAtivo.id)
+      await salvarParticipantes(eventoAtivo.id, editForm.participantes ?? participantesAtivos.map(p => p.id))
+    } else if (escopo === 'proximos' && eventoAtivo.recorrencia_grupo) {
+      await supabase.from('eventos').update(campos)
+        .eq('recorrencia_grupo', eventoAtivo.recorrencia_grupo)
+        .gte('data_inicio', eventoAtivo.data_inicio)
+    } else if (escopo === 'todos' && eventoAtivo.recorrencia_grupo) {
+      await supabase.from('eventos').update(campos).eq('recorrencia_grupo', eventoAtivo.recorrencia_grupo)
+    }
+    setSaving(false); setModalEscopo(null); setEventoAtivo(null); loadEventos()
+  }
+
+  async function executarDeletar(escopo: 'este' | 'proximos' | 'todos') {
+    if (!eventoAtivo) return
+    if (escopo === 'este') {
+      await supabase.from('eventos').delete().eq('id', eventoAtivo.id)
+    } else if (escopo === 'proximos' && eventoAtivo.recorrencia_grupo) {
+      await supabase.from('eventos').delete()
+        .eq('recorrencia_grupo', eventoAtivo.recorrencia_grupo)
+        .gte('data_inicio', eventoAtivo.data_inicio)
+    } else if (escopo === 'todos' && eventoAtivo.recorrencia_grupo) {
+      await supabase.from('eventos').delete().eq('recorrencia_grupo', eventoAtivo.recorrencia_grupo)
+    }
+    setModalEscopo(null); setEventoAtivo(null); loadEventos()
   }
 
   async function toggleConcluido(ev: Evento) {
@@ -227,10 +263,8 @@ export default function Agenda() {
     setEventoAtivo(null); loadEventos()
   }
 
-  async function deletarEvento(id: string) {
-    if (!confirm('Deletar este evento?')) return
-    await supabase.from('eventos').delete().eq('id', id)
-    setEventoAtivo(null); loadEventos()
+  async function deletarEvento() {
+    pedirEscopo('deletar')
   }
 
   async function salvarCategoria() {
@@ -504,12 +538,12 @@ export default function Agenda() {
                 </button>
                 <div className="flex gap-2">
                   <button onClick={() => {
-                    setEditando(true)
                     setEditForm({ titulo: ev.titulo, descricao: ev.descricao ?? '', data_inicio: ev.data_inicio, data_fim: ev.data_fim ?? '', dia_inteiro: ev.dia_inteiro, cor: ev.cor, categoria_id: ev.categoria_id ?? '', participantes: participantesAtivos.map(p => p.id) })
+                    pedirEscopo('editar')
                   }} className="btn-secondary flex-1 flex items-center justify-center gap-2">
                     <Pencil size={14} /> Editar
                   </button>
-                  <button onClick={() => deletarEvento(ev.id)}
+                  <button onClick={() => deletarEvento()}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
                     <Trash2 size={14} /> Deletar
                   </button>
@@ -551,7 +585,7 @@ export default function Agenda() {
               <SeletorParticipantes selecionados={idsEdit} onChange={ids => setEditForm(f => ({ ...f, participantes: ids }))} />
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setEditando(false)} className="btn-secondary flex-1">Cancelar</button>
-                <button onClick={salvarEdicao} disabled={saving} className="btn-primary flex-1">
+                <button onClick={() => pedirEscopo('editar')} disabled={saving} className="btn-primary flex-1">
                   {saving ? 'Salvando...' : 'Salvar alterações'}
                 </button>
               </div>
@@ -716,6 +750,35 @@ export default function Agenda() {
       <ModalEvento />
       {showCats && <ModalCategorias />}
       {showSync && <GoogleCalendarSync onClose={() => setShowSync(false)} />}
+
+      {modalEscopo && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+          <div className="card w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-1">
+              {modalEscopo.tipo === 'deletar' ? 'Deletar evento recorrente' : 'Editar evento recorrente'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-5">Este evento faz parte de uma série. O que deseja {modalEscopo.tipo === 'deletar' ? 'deletar' : 'editar'}?</p>
+            <div className="space-y-2">
+              <button onClick={() => modalEscopo.tipo === 'deletar' ? executarDeletar('este') : executarEdicao('este')}
+                className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                <p className="text-sm font-medium text-gray-900">Somente este evento</p>
+                <p className="text-xs text-gray-400 mt-0.5">Não afeta os demais da série</p>
+              </button>
+              <button onClick={() => modalEscopo.tipo === 'deletar' ? executarDeletar('proximos') : executarEdicao('proximos')}
+                className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                <p className="text-sm font-medium text-gray-900">Este e os próximos</p>
+                <p className="text-xs text-gray-400 mt-0.5">A partir desta data em diante</p>
+              </button>
+              <button onClick={() => modalEscopo.tipo === 'deletar' ? executarDeletar('todos') : executarEdicao('todos')}
+                className="w-full text-left px-4 py-3 rounded-lg border border-red-100 hover:bg-red-50 transition-colors">
+                <p className="text-sm font-medium text-red-700">Todos os eventos da série</p>
+                <p className="text-xs text-red-400 mt-0.5">Remove ou altera toda a recorrência</p>
+              </button>
+            </div>
+            <button onClick={() => setModalEscopo(null)} className="mt-4 w-full btn-secondary text-sm">Cancelar</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
