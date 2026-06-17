@@ -103,6 +103,10 @@ export default function Agenda() {
   useEffect(() => { loadEventos(); loadEquipe(); loadCategorias() }, [cursor, view])
 
   useEffect(() => {
+    if (searchParams.get('novo') === '1') abrirNovo()
+  }, [])
+
+  useEffect(() => {
     if (view === 'semana' && semanaRef.current) {
       const hora = new Date().getHours()
       semanaRef.current.scrollTop = Math.max(0, hora - 1) * 56

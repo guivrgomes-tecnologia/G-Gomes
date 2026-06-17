@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus } from 'lucide-react'
 import { supabase, Evento } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -147,7 +147,7 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Cards */}
+          {/* Cards de estatísticas */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             {cards.map(({ label, value, icon: Icon, color, link }) => (
               <Link key={label} to={link} className="card p-6 hover:shadow-md transition-shadow">
@@ -158,6 +158,28 @@ export default function Dashboard() {
                 <p className="text-sm text-gray-500 mt-1">{label}</p>
               </Link>
             ))}
+          </div>
+
+          {/* Ações rápidas */}
+          <div className="grid grid-cols-2 gap-4">
+            <Link to="/agenda?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={18} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Novo evento</p>
+                <p className="text-xs text-gray-400">Adicionar à agenda</p>
+              </div>
+            </Link>
+            <Link to="/pendencias?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={18} className="text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Nova pendência</p>
+                <p className="text-xs text-gray-400">Criar e atribuir</p>
+              </div>
+            </Link>
           </div>
         </div>
       )}

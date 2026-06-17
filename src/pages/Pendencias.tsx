@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, X, AlertCircle, ChevronDown, ArrowRight } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { useSearchParams } from 'react-router-dom'
 
 const STATUS_LABELS: Record<Pendencia['status'], string> = {
   aberta: 'Aberta', em_andamento: 'Em andamento', resolvida: 'Resolvida',
@@ -27,6 +28,7 @@ type Aba = 'comigo' | 'minhas' | 'todas'
 
 export default function Pendencias() {
   const { user } = useAuth()
+  const [searchParams] = useSearchParams()
   const [pendencias, setPendencias] = useState<Pendencia[]>([])
   const [equipe, setEquipe] = useState<Profile[]>([])
   const [setores, setSetores] = useState<Setor[]>([])
@@ -37,7 +39,11 @@ export default function Pendencias() {
   const [expandido, setExpandido] = useState<string | null>(null)
   const [filtroSetor, setFiltroSetor] = useState<string>('')
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => {
+    loadData()
+    if (searchParams.get('novo') === '1') setShowModal(true)
+    if (searchParams.get('aba') === 'minhas') setAba('minhas')
+  }, [])
 
   async function loadData() {
     const [{ data: pends }, { data: perfis }, { data: setsData }] = await Promise.all([
