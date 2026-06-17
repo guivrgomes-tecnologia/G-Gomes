@@ -107,10 +107,28 @@ export default function Pendencias() {
   const [editandoSolucao, setEditandoSolucao] = useState<string | null>(null)
 
   useEffect(() => {
-    loadData()
-    if (searchParams.get('novo') === '1') setShowModal(true)
-    if (searchParams.get('aba') === 'minhas') setAba('minhas')
+    loadData().then(() => {
+      if (searchParams.get('novo') === '1') setShowModal(true)
+      if (searchParams.get('aba') === 'minhas') setAba('minhas')
+    })
   }, [])
+
+  useEffect(() => {
+    const abrirId = searchParams.get('abrir')
+    if (abrirId && pendencias.length > 0) {
+      setExpandido(abrirId)
+      // tenta encontrar a aba correta
+      const p = pendencias.find(p => p.id === abrirId)
+      if (p) {
+        if (p.para_usuario_id === user?.id) setAba('comigo')
+        else if (p.de_usuario_id === user?.id) setAba('minhas')
+        else setAba('todas')
+      }
+      setTimeout(() => {
+        document.getElementById(`pend-${abrirId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [pendencias])
 
   async function loadData() {
     const [{ data: pends }, { data: perfis }, { data: setsData }, { data: reunData }] = await Promise.all([
@@ -418,7 +436,7 @@ export default function Pendencias() {
           const podeDarSolucao = euSouDestinatario && pend.status !== 'resolvida'
 
           return (
-            <div key={pend.id} className={`card overflow-hidden ${isAtrasado(pend) ? 'border-red-300' : ''}`}>
+            <div key={pend.id} id={`pend-${pend.id}`} className={`card overflow-hidden ${isAtrasado(pend) ? 'border-red-300' : ''}`}>
               <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => {
                 const abrindo = expandido !== pend.id
                 setExpandido(abrindo ? pend.id : null)

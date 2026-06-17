@@ -202,7 +202,7 @@ export default function Dashboard() {
                   {pendenciasAlta.map(p => {
                     const euSouDest = p.para_usuario_id === profile?.id
                     return (
-                      <li key={p.id} onClick={() => navigate('/pendencias')}
+                      <li key={p.id} onClick={() => navigate(`/pendencias?abrir=${p.id}`)}
                         className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
