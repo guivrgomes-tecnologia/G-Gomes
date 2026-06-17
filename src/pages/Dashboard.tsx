@@ -108,6 +108,28 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Ações rápidas */}
+          <div className="grid grid-cols-2 gap-4">
+            <Link to="/agenda?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={18} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Novo evento</p>
+                <p className="text-xs text-gray-400">Adicionar à agenda</p>
+              </div>
+            </Link>
+            <Link to="/pendencias?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
+                <Plus size={18} className="text-red-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Nova pendência</p>
+                <p className="text-xs text-gray-400">Criar e atribuir</p>
+              </div>
+            </Link>
+          </div>
+
           {/* Eventos hoje */}
           <div className="card overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -160,27 +182,6 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Ações rápidas */}
-          <div className="grid grid-cols-2 gap-4">
-            <Link to="/agenda?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
-                <Plus size={18} className="text-indigo-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Novo evento</p>
-                <p className="text-xs text-gray-400">Adicionar à agenda</p>
-              </div>
-            </Link>
-            <Link to="/pendencias?novo=1" className="card p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
-                <Plus size={18} className="text-red-500" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Nova pendência</p>
-                <p className="text-xs text-gray-400">Criar e atribuir</p>
-              </div>
-            </Link>
-          </div>
         </div>
       )}
     </div>
