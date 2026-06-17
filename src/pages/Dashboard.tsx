@@ -24,17 +24,20 @@ export default function Dashboard() {
 
   async function load() {
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
+    function localDate(d: Date) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    }
+    const today = localDate(now)
 
     const amanha = new Date(now); amanha.setDate(now.getDate() + 1)
-    const amanhaStr = amanha.toISOString().split('T')[0]
+    const amanhaStr = localDate(amanha)
 
     const diaSemana = now.getDay()
     const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana
     const seg = new Date(now); seg.setDate(now.getDate() + diffSeg)
     const dom = new Date(seg); dom.setDate(seg.getDate() + 6)
-    const segStr = seg.toISOString().split('T')[0]
-    const domStr = dom.toISOString().split('T')[0]
+    const segStr = localDate(seg)
+    const domStr = localDate(dom)
 
     // Eventos de hoje (criados por mim ou onde sou participante)
     const { data: meusHoje } = await supabase

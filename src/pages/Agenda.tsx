@@ -24,7 +24,9 @@ const FORM_INITIAL: FormState = {
   participantes: [],
 }
 
-function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
+function toDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
 function getMondayOf(d: Date) { const day = d.getDay(); return addDays(d, day === 0 ? -6 : 1 - day) }
 function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate() }
