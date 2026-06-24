@@ -307,7 +307,7 @@ export default function Agenda() {
       inicio = fim = toDateStr(cursor)
     }
 
-    const { data: meus } = await supabase.from('eventos')
+    const { data: meusRaw } = await supabase.from('eventos')
       .select('*, categoria:categorias_evento(*)')
       .eq('criado_por', user!.id)
       .gte('data_inicio', inicio).lte('data_inicio', toDateStr(addDays(new Date(fim), 1)) + 'T02:59:59Z').order('data_inicio')
@@ -315,18 +315,31 @@ export default function Agenda() {
     const { data: participando } = await supabase
       .from('evento_participantes').select('evento_id').eq('usuario_id', user!.id)
 
-    const idsParticipando = (participando ?? []).map(p => p.evento_id)
+    const idsParticipando = new Set((participando ?? []).map(p => p.evento_id))
 
-    if (idsParticipando.length > 0) {
+    // Eventos gerados a partir de uma pendência: só devem aparecer pro criador
+    // via "criado_por" se ele também estiver entre os participantes do evento
+    // (ou seja, se ele se marcou como destinatário). Caso contrário, só aparecem
+    // pra ele se de fato estiver em evento_participantes.
+    let meus = meusRaw ?? []
+    const meusIds = (meusRaw ?? []).map(e => e.id)
+    if (meusIds.length > 0) {
+      const { data: pendenciasVinculadas } = await supabase
+        .from('pendencias').select('evento_id').in('evento_id', meusIds)
+      const idsDePendencia = new Set((pendenciasVinculadas ?? []).map(p => p.evento_id))
+      meus = meus.filter(e => !idsDePendencia.has(e.id) || idsParticipando.has(e.id))
+    }
+
+    if (idsParticipando.size > 0) {
       const { data: eventosParticipando } = await supabase.from('eventos')
         .select('*, categoria:categorias_evento(*)')
-        .in('id', idsParticipando)
+        .in('id', Array.from(idsParticipando))
         .gte('data_inicio', inicio).lte('data_inicio', toDateStr(addDays(new Date(fim), 1)) + 'T02:59:59Z')
-      const meusIds = new Set((meus ?? []).map(e => e.id))
-      const extras = (eventosParticipando ?? []).filter(e => !meusIds.has(e.id))
-      setEventos([...(meus ?? []), ...extras])
+      const meusIdsFiltrados = new Set(meus.map(e => e.id))
+      const extras = (eventosParticipando ?? []).filter(e => !meusIdsFiltrados.has(e.id))
+      setEventos([...meus, ...extras])
     } else {
-      setEventos(meus ?? [])
+      setEventos(meus)
     }
   }
 

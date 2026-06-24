@@ -248,9 +248,12 @@ export default function Pendencias() {
     await salvarParticipantes(editando.id, editForm.para_usuario_ids)
     if (editando.evento_id) {
       await supabase.from('evento_participantes').delete().eq('evento_id', editando.evento_id)
-      const outros = editForm.para_usuario_ids.filter(id => id !== user!.id)
-      if (outros.length > 0) {
-        await supabase.from('evento_participantes').insert(outros.map(uid => ({ evento_id: editando.evento_id, usuario_id: uid })))
+      // Inclui todos os destinatários como participantes, inclusive o próprio criador
+      // quando ele se marcou como destinatário (necessário pra Agenda decidir se o
+      // evento deve aparecer pra ele, já que eventos de pendência só aparecem pro
+      // criador se ele também for participante).
+      if (editForm.para_usuario_ids.length > 0) {
+        await supabase.from('evento_participantes').insert(editForm.para_usuario_ids.map(uid => ({ evento_id: editando.evento_id, usuario_id: uid })))
       }
     }
     setSaving(false); setEditando(null); loadData()

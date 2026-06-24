@@ -42,9 +42,12 @@ async function criarEventoDaPendencia(titulo: string, descricao: string | null, 
   }).select('id').single()
   if (evento) {
     await supabase.from('pendencias').update({ evento_id: evento.id }).eq('id', pendenciaId)
-    const outros = participantesIds.filter(id => id !== userId)
-    if (outros.length > 0) {
-      await supabase.from('evento_participantes').insert(outros.map(uid => ({ evento_id: evento.id, usuario_id: uid })))
+    // Inclui todos os destinatários como participantes, inclusive o próprio criador
+    // quando ele se marcou como destinatário (necessário pra Agenda decidir se o
+    // evento deve aparecer pra ele, já que eventos de pendência só aparecem pro
+    // criador se ele também for participante).
+    if (participantesIds.length > 0) {
+      await supabase.from('evento_participantes').insert(participantesIds.map(uid => ({ evento_id: evento.id, usuario_id: uid })))
     }
 
     const { data: gtok } = await supabase.from('google_tokens').select('usuario_id').eq('usuario_id', userId).single()

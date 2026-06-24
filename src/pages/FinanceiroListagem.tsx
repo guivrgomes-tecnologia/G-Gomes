@@ -27,6 +27,7 @@ export default function FinanceiroListagem() {
   const [diasFechados, setDiasFechados] = useState<Set<string>>(new Set())
   const [totalPorDia, setTotalPorDia] = useState<Record<string, number>>({})
   const [sincronizando, setSincronizando] = useState(false)
+  const [apagandoDuplicados, setApagandoDuplicados] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => { carregarMes() }, [ano, mes])
@@ -65,6 +66,15 @@ export default function FinanceiroListagem() {
     setTotalPorDia(totais)
   }
 
+  async function apagarDuplicados() {
+    setApagandoDuplicados(true)
+    const { data, error } = await supabase.rpc('apagar_lancamentos_duplicados')
+    setApagandoDuplicados(false)
+    if (error) { alert('Erro ao apagar duplicados: ' + error.message); return }
+    alert(`${data ?? 0} lançamento(s) duplicado(s) apagado(s).`)
+    await carregarMes()
+  }
+
   function mudarMes(delta: number) {
     let novoMes = mes + delta
     let novoAno = ano
@@ -84,6 +94,9 @@ export default function FinanceiroListagem() {
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
         <div className="flex items-center gap-3">
+          <button onClick={apagarDuplicados} disabled={apagandoDuplicados} className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            {apagandoDuplicados ? 'Apagando...' : 'Apagar duplicados'}
+          </button>
           <button onClick={atualizarLancamentos} disabled={sincronizando} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
             <Eye size={15} className={sincronizando ? 'animate-pulse' : ''} /> {sincronizando ? 'Atualizando...' : 'Atualizar lançamentos'}
           </button>

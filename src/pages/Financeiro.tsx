@@ -115,6 +115,7 @@ export default function Financeiro() {
   const [showImportar, setShowImportar] = useState(false)
   const [feriados, setFeriados] = useState<Set<string>>(new Set())
   const [marcandoFeriado, setMarcandoFeriado] = useState(false)
+  const [apagandoDuplicados, setApagandoDuplicados] = useState(false)
   const [diaImportar, setDiaImportar] = useState('')
   const [lancamentosImportar, setLancamentosImportar] = useState<Lancamento[] | null>(null)
   const [buscandoImportar, setBuscandoImportar] = useState(false)
@@ -422,6 +423,15 @@ export default function Financeiro() {
     await carregarFeriados()
     await visualizar()
     setMarcandoFeriado(false)
+  }
+
+  async function apagarDuplicados() {
+    setApagandoDuplicados(true)
+    const { data, error } = await supabase.rpc('apagar_lancamentos_duplicados')
+    setApagandoDuplicados(false)
+    if (error) { alert('Erro ao apagar duplicados: ' + error.message); return }
+    alert(`${data ?? 0} lançamento(s) duplicado(s) apagado(s).`)
+    await carregarDia()
   }
 
   async function carregarDia() {
@@ -790,6 +800,10 @@ export default function Financeiro() {
             </button>
 
             <div className="flex-1" />
+
+            <button onClick={apagarDuplicados} disabled={apagandoDuplicados} className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+              {apagandoDuplicados ? 'Apagando...' : 'Apagar duplicados'}
+            </button>
 
             {!fechado && (
               <button onClick={visualizar} disabled={sincronizando} className="btn-secondary flex items-center gap-2">
