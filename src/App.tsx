@@ -12,6 +12,7 @@ import Admin from './pages/Admin'
 import GoogleCallback from './pages/GoogleCallback'
 import MicrosoftCallback from './pages/MicrosoftCallback'
 import Financeiro from './pages/Financeiro'
+import FinanceiroListagem from './pages/FinanceiroListagem'
 import ResetPassword from './pages/ResetPassword'
 import Casa from './pages/Casa'
 import DocumentosEmpresa from './pages/DocumentosEmpresa'
@@ -50,7 +51,7 @@ export default function App() {
             <Route path="metas" element={<Metas />} />
             <Route path="historico" element={<Historico />} />
             <Route path="comissoes" element={<Comissoes />} />
-            <Route path="financeiro" element={<Financeiro />} />
+            <Route path="financeiro" element={<FinanceiroListagem />} />
             <Route path="financeiro/:dia" element={<Financeiro />} />
             <Route path="notificacoes" element={<Notificacoes />} />
             <Route path="perfil" element={<Perfil />} />

@@ -25,7 +25,7 @@ async function getAccessToken(supabase: any, userId: string): Promise<string | n
         client_secret: CLIENT_SECRET,
         refresh_token: data.refresh_token,
         grant_type: 'refresh_token',
-        scope: 'Files.Read offline_access User.Read',
+        scope: 'Files.ReadWrite offline_access User.Read',
       }),
     })
     const refreshed = await res.json()
@@ -140,13 +140,16 @@ Deno.serve(async (req) => {
     )
 
     const encontrados: any[] = []
-    for (const range of respostas) {
-      const valores: any[][] = range.values ?? []
-      for (const row of valores) {
+    for (let b = 0; b < respostas.length; b++) {
+      const valores: any[][] = respostas[b].values ?? []
+      const inicioBloco = 3 + b * BLOCO
+      for (let i = 0; i < valores.length; i++) {
+        const row = valores[i]
         const vencimentoISO = serialParaISO(row[3])
         if (vencimentoISO == null) continue
         if (!buscarTodos && vencimentoISO !== alvo) continue
         encontrados.push({
+          linha_planilha: inicioBloco + i,
           data_dig: serialParaISO(row[0]),
           empresa: row[1] ?? null,
           vencimento: vencimentoISO,

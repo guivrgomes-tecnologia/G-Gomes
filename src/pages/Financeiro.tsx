@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, Plus, CreditCard, Upload, Banknote, Printer, FileText } from 'lucide-react'
+import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { calcularConferenciaCartao, calcularConferenciaDinheiro, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
+import { sincronizarLancamentos } from '../lib/financeiroSyncHelper'
 
 type LinhaDinheiroEditavel = LinhaDinheiro & { fechamentoCaixa: number; diferenca: number; deposito: number; contaDeposito: string }
 
@@ -91,6 +92,10 @@ export default function Financeiro() {
 
   const [conectado, setConectado] = useState<boolean | null>(null)
   const [arquivoUrl, setArquivoUrl] = useState('')
+  const [pastaOnedrive, setPastaOnedrive] = useState('')
+  const [finalizandoDia, setFinalizandoDia] = useState(false)
+  const [erroFinalizar, setErroFinalizar] = useState('')
+  const [diaFinalizado, setDiaFinalizado] = useState(false)
   const [mostrarConfig, setMostrarConfig] = useState(false)
   const [fechado, setFechado] = useState<{ fechado_em: string } | null>(null)
   const [lancamentosSalvos, setLancamentosSalvos] = useState<Lancamento[]>([])
@@ -108,11 +113,16 @@ export default function Financeiro() {
   })
   const [salvandoNovo, setSalvandoNovo] = useState(false)
   const [showImportar, setShowImportar] = useState(false)
+  const [feriados, setFeriados] = useState<Set<string>>(new Set())
+  const [marcandoFeriado, setMarcandoFeriado] = useState(false)
   const [diaImportar, setDiaImportar] = useState('')
   const [lancamentosImportar, setLancamentosImportar] = useState<Lancamento[] | null>(null)
   const [buscandoImportar, setBuscandoImportar] = useState(false)
   const [movendoId, setMovendoId] = useState<string | null>(null)
   const [showCP, setShowCP] = useState(false)
+  const [abrirNotas, setAbrirNotas] = useState(false)
+  const [abrirDespesas, setAbrirDespesas] = useState(false)
+  const [abrirErros, setAbrirErros] = useState(false)
   const [dataMover, setDataMover] = useState('')
   const [conferenciaSalva, setConferenciaSalva] = useState<LinhaConferencia[] | null>(null)
   const [conferenciaPreviaCalc, setConferenciaPreviaCalc] = useState<LinhaConferencia[] | null>(null)
@@ -132,12 +142,12 @@ export default function Financeiro() {
   const [errosCaixa, setErrosCaixa] = useState<ErroCaixa[]>([])
   const [novoErro, setNovoErro] = useState({ loja: LOJAS_CARTAO[0].nome, valor: '', operadora: '' })
 
+  useEffect(() => { carregarConfig(); carregarFeriados() }, [])
   useEffect(() => {
-    if (!dia) navigate(`/financeiro/${hojeYYYYMMDD()}`, { replace: true })
-  }, [dia])
-
-  useEffect(() => { carregarConfig() }, [])
-  useEffect(() => { carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa() }, [diaSelecionado])
+    carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa()
+    setDiaFinalizado(false)
+    setErroFinalizar('')
+  }, [diaSelecionado])
 
   useEffect(() => {
     document.body.classList.toggle('modo-impressao-cp', showCP)
@@ -388,11 +398,30 @@ export default function Financeiro() {
   async function carregarConfig() {
     const [{ data: tok }, { data: cfg }] = await Promise.all([
       supabase.from('microsoft_tokens').select('usuario_id').eq('usuario_id', user!.id).maybeSingle(),
-      supabase.from('financeiro_config').select('arquivo_url').eq('usuario_id', user!.id).maybeSingle(),
+      supabase.from('financeiro_config').select('arquivo_url, pasta_onedrive').eq('usuario_id', user!.id).maybeSingle(),
     ])
     setConectado(!!tok)
     setArquivoUrl(cfg?.arquivo_url ?? '')
+    setPastaOnedrive(cfg?.pasta_onedrive ?? '')
     if (!cfg?.arquivo_url) setMostrarConfig(true)
+  }
+
+  async function carregarFeriados() {
+    const { data } = await supabase.from('financeiro_feriados').select('dia')
+    setFeriados(new Set((data ?? []).map(r => r.dia)))
+  }
+
+  async function marcarFeriado() {
+    setMarcandoFeriado(true)
+    const ehFeriado = feriados.has(diaSelecionado)
+    if (ehFeriado) {
+      await supabase.from('financeiro_feriados').delete().eq('dia', diaSelecionado)
+    } else {
+      await supabase.from('financeiro_feriados').insert({ dia: diaSelecionado, usuario_id: user!.id })
+    }
+    await carregarFeriados()
+    await visualizar()
+    setMarcandoFeriado(false)
   }
 
   async function carregarDia() {
@@ -417,13 +446,14 @@ export default function Financeiro() {
       redirect_uri: 'https://g-gomes.vercel.app/auth/microsoft/callback',
       response_type: 'code',
       response_mode: 'query',
-      scope: 'Files.Read offline_access User.Read',
+      prompt: 'consent',
+      scope: 'Files.ReadWrite offline_access User.Read',
     })
     window.location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`
   }
 
   async function salvarArquivo() {
-    await supabase.from('financeiro_config').upsert({ usuario_id: user!.id, arquivo_url: arquivoUrl, updated_at: new Date().toISOString() }, { onConflict: 'usuario_id' })
+    await supabase.from('financeiro_config').upsert({ usuario_id: user!.id, arquivo_url: arquivoUrl, pasta_onedrive: pastaOnedrive, updated_at: new Date().toISOString() }, { onConflict: 'usuario_id' })
   }
 
   async function visualizar() {
@@ -431,71 +461,12 @@ export default function Financeiro() {
     if (!arquivoUrl) { setErro('Configure o link da planilha primeiro.'); setMostrarConfig(true); return }
     setSincronizando(true)
     setErro('')
-    const { data, error } = await supabase.functions.invoke('financeiro-sync', {
-      body: { user_id: user!.id, arquivo_url: arquivoUrl, modo: 'todos' },
-    })
-
-    let corpoErro: any = data?.error ? data : null
-    if (error && (error as any).context?.json) {
-      try { corpoErro = await (error as any).context.json() } catch { /* ignora */ }
-    }
-    if (corpoErro || error) {
-      const codigo = corpoErro?.error
-      const mensagem = codigo === 'not_connected' ? 'Conexão com a Microsoft expirou. Conecte novamente.'
-        : codigo === 'arquivo_nao_encontrado' ? 'Não consegui localizar esse arquivo no OneDrive. Confere o link nas configurações.'
-        : codigo === 'aba_nao_encontrada' ? `Não encontrei a aba "CONTAS A PAGAR" nesse arquivo. Abas disponíveis: ${(corpoErro?.details?.abas_disponiveis ?? []).join(', ')}`
-        : codigo ? `${codigo}${corpoErro?.details ? ' — ' + JSON.stringify(corpoErro.details).slice(0, 300) : ''}`
-        : error?.message ?? 'Erro ao sincronizar'
-      setErro(mensagem)
+    const { erro } = await sincronizarLancamentos(user!.id, arquivoUrl)
+    if (erro) {
+      setErro(erro)
       setSincronizando(false)
       return
     }
-
-    const todos: Lancamento[] = data.lancamentos ?? []
-    const porDia = new Map<string, Lancamento[]>()
-    const vistos = new Set<string>()
-    for (const l of todos) {
-      if (!l.vencimento) continue
-      const chave = `${l.vencimento}|${l.empresa ?? ''}|${l.fornecedor ?? ''}|${l.nota ?? ''}|${l.valor ?? ''}`
-      if (vistos.has(chave)) continue
-      vistos.add(chave)
-      if (!porDia.has(l.vencimento)) porDia.set(l.vencimento, [])
-      porDia.get(l.vencimento)!.push(l)
-    }
-
-    const dias = Array.from(porDia.keys())
-    const { data: existentes } = dias.length > 0
-      ? await supabase.from('financeiro_lancamentos').select('*').in('dia', dias)
-      : { data: [] as any[] }
-    const diasFechados = new Set((existentes ?? []).filter(r => r.fechado).map(r => r.dia))
-    const chaveLinha = (l: any) => `${l.empresa ?? ''}|${l.fornecedor ?? ''}|${l.nota ?? ''}|${l.valor ?? ''}`
-
-    await Promise.all(dias.filter(dia => !diasFechados.has(dia)).map(async dia => {
-      const existentesDoDia = (existentes ?? []).filter(r => r.dia === dia && !r.importado_de_id)
-      const existentesPorChave = new Map(existentesDoDia.map(r => [chaveLinha(r), r]))
-      const usados = new Set<string>()
-
-      for (const l of porDia.get(dia)!) {
-        const chave = chaveLinha(l)
-        const existente = existentesPorChave.get(chave)
-        if (existente) {
-          usados.add(chave)
-          // Mantém pago, juros, pagar_em, aprovado já preenchidos; só atualiza os dados que vêm da planilha
-          await supabase.from('financeiro_lancamentos').update({
-            data_dig: l.data_dig, vencimento: l.vencimento, descricao: l.descricao, pagamento: l.pagamento, tipo: l.tipo, observacao: l.observacao,
-          }).eq('id', existente.id)
-        } else {
-          await supabase.from('financeiro_lancamentos').insert({ ...l, dia, usuario_id: user!.id, fechado: false })
-        }
-      }
-
-      // Remove só os que não existem mais na planilha (e não foram editados manualmente como importados/redirecionados)
-      const sobrando = existentesDoDia.filter(r => !usados.has(chaveLinha(r)) && !r.redirecionado_para)
-      if (sobrando.length > 0) {
-        await supabase.from('financeiro_lancamentos').delete().in('id', sobrando.map(r => r.id))
-      }
-    }))
-
     setSincronizando(false)
     await carregarDia()
   }
@@ -539,6 +510,7 @@ export default function Financeiro() {
       tipo: novoLancamento.tipo || null,
       pagar_em: novoLancamento.pagar_em || null,
       usuario_id: user!.id,
+      origem_manual: true,
     })
     setSalvandoNovo(false)
     setShowNovoLancamento(false)
@@ -610,6 +582,25 @@ export default function Financeiro() {
     return <div className="p-8"><div className="card p-12 text-center text-gray-400">Carregando...</div></div>
   }
 
+  const diaDaSemana = new Date(diaSelecionado + 'T12:00:00').getDay()
+  if (diaDaSemana === 0 || diaDaSemana === 6) {
+    let proximaSegunda = diaSelecionado
+    while (new Date(proximaSegunda + 'T12:00:00').getDay() !== 1) proximaSegunda = somarDias(proximaSegunda, 1)
+    return (
+      <div className="p-4 sm:p-8">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
+        </div>
+        <div className="card p-8 text-center">
+          <p className="text-sm text-gray-600 mb-3">Vencimentos de sábado e domingo são agrupados na segunda-feira seguinte. Esse dia não tem lançamentos próprios.</p>
+          <button onClick={() => navigate(`/financeiro/${proximaSegunda}`)} className="btn-primary">
+            Ir para segunda-feira ({new Date(proximaSegunda + 'T12:00:00').toLocaleDateString('pt-BR')})
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const listaExibida = fechado ? lancamentosSalvos : previa
   const total = listaExibida?.filter(l => !l.redirecionado_para).reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0) ?? 0
 
@@ -671,6 +662,94 @@ export default function Financeiro() {
     return saldoAntesPagamentos(conta) - pagamentosPorConta(conta)
   }
 
+  function gerarRelatorioCompletoHTML(): string {
+    const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const linhasCartao = conferenciaSalva ?? conferenciaPreviaCalc ?? []
+    const linhasDinheiro = dinheiroSalvo ?? dinheiroPreviaCalc ?? []
+    const css = `
+      body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:24px;max-width:1100px;margin:0 auto}
+      h1{font-size:20px;margin-bottom:4px}
+      h2{font-size:14px;text-transform:uppercase;margin:24px 0 8px;color:#374151}
+      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
+      th,td{border:1px solid #d1d5db;padding:6px 8px;text-align:left}
+      th{background:#f3f4f6}
+      .num{text-align:right}
+      .total{font-weight:bold;background:#f3f4f6}
+      .grupo{font-weight:bold;text-transform:uppercase;background:#e5e7eb}
+    `
+    const linhasSaldoInicial = CONTAS_SALDO_INICIAL.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldos[c] ?? 0))}</td></tr>`).join('')
+    const linhasCartaoHtml = linhasCartao.map(l => `<tr><td>${esc(l.loja)}</td><td class="num">${esc(fmt(l.vendaCartao))}</td><td class="num">${esc(fmt(l.recebidoRede))}</td><td class="num">${esc(fmt(l.taxaRede))}</td><td class="num">${esc(fmt(l.diferenca - notasPorLoja(l.loja).cartao))}</td></tr>`).join('')
+    const linhasDinheiroHtml = linhasDinheiro.map(l => `<tr><td>${esc(l.loja)}</td><td class="num">${esc(fmt(l.vendaDinheiro))}</td><td class="num">${esc(fmt(l.fechamentoCaixa))}</td><td class="num">${esc(fmt(l.deposito))}</td><td>${esc(l.contaDeposito)}</td><td class="num">${esc(fmt(l.diferenca + despesaPorLoja(l.loja) + erroPorLoja(l.loja) - notasPorLoja(l.loja).dinheiro))}</td></tr>`).join('')
+    const linhasNotas = notasFiscais.map(n => `<tr><td>${esc(n.loja)}</td><td>${esc(FORMAS_PAGAMENTO_NOTA.find(f => f.valor === n.forma_pagamento)?.label)}</td><td class="num">${esc(fmt(n.valor))}</td></tr>`).join('')
+    const linhasDespesas = despesasLoja.map(d => `<tr><td>${esc(d.loja)}</td><td>${esc(d.descricao)}</td><td class="num">${esc(fmt(d.valor))}</td></tr>`).join('')
+    const linhasErros = errosCaixa.map(e => `<tr><td>${esc(e.loja)}</td><td>${esc(e.operadora)}</td><td class="num">${esc(fmt(e.valor))}</td></tr>`).join('')
+    const linhasTransf = transferenciasLista.map(t => `<tr><td>${esc(t.de)}</td><td>${esc(t.para)}</td><td class="num">${esc(fmt(t.valor))}</td></tr>`).join('') +
+      (saqueSicoobDinheiro > 0 ? `<tr><td>FAPS SICOOB</td><td>DINHEIRO (saque)</td><td class="num">${esc(fmt(saqueSicoobDinheiro))}</td></tr>` : '')
+    const linhasSaldoAntes = CONTAS_RESUMO.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldoAntesPagamentos(c)))}</td></tr>`).join('')
+    const linhasSaldoDepois = CONTAS_RESUMO.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldoDepoisPagamentos(c)))}</td></tr>`).join('')
+    const linhasPagPorConta = BANCOS.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(pagamentosPorConta(c)))}</td></tr>`).join('')
+    const linhasPagamentos = pagamentosCPAgrupados.map(g => `<tr class="grupo"><td colspan="10">${esc(g.conta)}</td></tr>` +
+      g.itens.map(l => `<tr><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${esc(l.tipo)}</td><td>${esc(l.pagar_em)}</td><td>${l.pago ? 'Pago' : '—'}</td></tr>`).join('')).join('')
+
+    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório financeiro — ${esc(diaSelecionado)}</title><style>${css}</style></head><body>
+      <h1>Relatório financeiro completo</h1>
+      <p>${esc(fmtData(diaSelecionado))}</p>
+
+      <h2>Saldo inicial</h2>
+      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoInicial}</tbody></table>
+
+      <h2>Conferência rede (cartão)</h2>
+      <table><thead><tr><th>Loja</th><th>Venda cartão</th><th>Recebido na rede</th><th>Taxa rede</th><th>Diferença</th></tr></thead><tbody>${linhasCartaoHtml}</tbody></table>
+
+      <h2>Conferência de dinheiro</h2>
+      <table><thead><tr><th>Loja</th><th>Venda dinheiro</th><th>Fechamento de caixa</th><th>Depósito</th><th>Conta depósito</th><th>Diferença</th></tr></thead><tbody>${linhasDinheiroHtml}</tbody></table>
+
+      ${notasFiscais.length > 0 ? `<h2>Notas fiscais</h2><table><thead><tr><th>Loja</th><th>Forma de pagamento</th><th>Valor</th></tr></thead><tbody>${linhasNotas}</tbody></table>` : ''}
+      ${despesasLoja.length > 0 ? `<h2>Despesas pagas em loja</h2><table><thead><tr><th>Loja</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${linhasDespesas}</tbody></table>` : ''}
+      ${errosCaixa.length > 0 ? `<h2>Erros de caixa</h2><table><thead><tr><th>Loja</th><th>Operadora</th><th>Valor</th></tr></thead><tbody>${linhasErros}</tbody></table>` : ''}
+      ${(transferenciasLista.length > 0 || saqueSicoobDinheiro > 0) ? `<h2>Transferências</h2><table><thead><tr><th>De</th><th>Para</th><th>Valor</th></tr></thead><tbody>${linhasTransf}</tbody></table>` : ''}
+
+      <h2>Saldo antes dos pagamentos</h2>
+      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoAntes}<tr class="total"><td>Total</td><td class="num">${esc(fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoAntesPagamentos(c), 0)))}</td></tr></tbody></table>
+
+      <h2>Pagamentos previstos — total ${esc(fmt(total))}</h2>
+      <table><thead><tr><th>Loja</th><th>Venc.</th><th>Fornecedor</th><th>Fatura</th><th>Descrição</th><th>Observação</th><th>Valor</th><th>Tipo</th><th>Pagar em</th><th>Pago</th></tr></thead><tbody>${linhasPagamentos}</tbody></table>
+
+      <h2>Pagamentos por conta</h2>
+      <table><thead><tr><th>Conta</th><th>Total</th></tr></thead><tbody>${linhasPagPorConta}<tr class="total"><td>Total</td><td class="num">${esc(fmt(BANCOS.reduce((s, c) => s + pagamentosPorConta(c), 0)))}</td></tr></tbody></table>
+
+      <h2>Saldo depois dos pagamentos</h2>
+      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoDepois}<tr class="total"><td>Total</td><td class="num">${esc(fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoDepoisPagamentos(c), 0)))}</td></tr></tbody></table>
+    </body></html>`
+  }
+
+  async function finalizarDia() {
+    if (!pastaOnedrive.trim()) { setErroFinalizar('Configure a pasta do OneDrive nas configurações primeiro.'); setMostrarConfig(true); return }
+    setFinalizandoDia(true)
+    setErroFinalizar('')
+    const conteudo_html = gerarRelatorioCompletoHTML()
+    const nome_arquivo = `Relatorio-${diaSelecionado}.html`
+    const { data, error } = await supabase.functions.invoke('financeiro-upload', {
+      body: { user_id: user!.id, pasta: pastaOnedrive.trim(), nome_arquivo, conteudo_html },
+    })
+    let corpoErro: any = data?.error ? data : null
+    if (error && (error as any).context?.json) {
+      try { corpoErro = await (error as any).context.json() } catch { /* ignora */ }
+    }
+    if (corpoErro || error) {
+      const codigo = corpoErro?.error
+      const mensagem = codigo === 'not_connected' ? 'Conexão com a Microsoft expirou ou não tem permissão de escrita. Reconecte nas configurações.'
+        : codigo === 'pasta_nao_encontrada' ? `Não encontrei a pasta "${pastaOnedrive}" no seu OneDrive. Crie essa pasta primeiro.`
+        : codigo ? `${codigo}${corpoErro?.details ? ' — ' + JSON.stringify(corpoErro.details).slice(0, 300) : ''}`
+        : error?.message ?? 'Erro ao salvar no OneDrive'
+      setErroFinalizar(mensagem)
+      setFinalizandoDia(false)
+      return
+    }
+    setFinalizandoDia(false)
+    setDiaFinalizado(true)
+  }
+
   return (
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -702,11 +781,19 @@ export default function Financeiro() {
             </button>
             <button onClick={() => navigate(`/financeiro/${hojeYYYYMMDD()}`)} className="text-xs text-brand-600 hover:underline ml-1">Hoje</button>
 
+            <button onClick={marcarFeriado} disabled={marcandoFeriado}
+              className={`text-xs px-3 py-2 rounded-lg border transition-colors flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50 ${
+                feriados.has(diaSelecionado) ? 'bg-red-50 border-red-300 text-red-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+              }`}>
+              <CalendarOff size={13} />
+              {marcandoFeriado ? 'Atualizando...' : feriados.has(diaSelecionado) ? 'Feriado (clique pra desmarcar)' : 'Feriado'}
+            </button>
+
             <div className="flex-1" />
 
             {!fechado && (
               <button onClick={visualizar} disabled={sincronizando} className="btn-secondary flex items-center gap-2">
-                <Eye size={15} className={sincronizando ? 'animate-pulse' : ''} /> {sincronizando ? 'Buscando...' : 'Visualizar lançamentos'}
+                <Eye size={15} className={sincronizando ? 'animate-pulse' : ''} /> {sincronizando ? 'Atualizando...' : 'Atualizar lançamentos'}
               </button>
             )}
           </div>
@@ -775,25 +862,15 @@ export default function Financeiro() {
           </div>
 
           {/* Conferência de cartão (Rede) */}
-          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 mb-6">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-6">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="text-sm font-semibold text-yellow-800 flex items-center gap-1.5"><CreditCard size={15} /> Conferência rede (cartão) — venda de ontem</h2>
-              {conferenciaSalva && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1 rounded-lg whitespace-nowrap flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Fechado
-                  </span>
-                  <button onClick={reabrirConferencia} className="text-xs px-2.5 py-1 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors whitespace-nowrap">
-                    Reabrir
-                  </button>
-                </div>
-              )}
+              <h2 className="text-sm font-semibold text-blue-800 flex items-center gap-1.5"><CreditCard size={15} /> Conferência rede (cartão) — venda de ontem</h2>
             </div>
 
             {!conferenciaSalva && (
               <div className="grid sm:grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-[11px] text-yellow-800 mb-1">Relatório do sistema (PDV)</label>
+                  <label className="block text-[11px] text-blue-800 mb-1">Relatório do sistema (PDV)</label>
                   <label
                     onDragOver={e => { e.preventDefault(); setArrastandoSobre('sistema') }}
                     onDragLeave={() => setArrastandoSobre(null)}
@@ -803,14 +880,14 @@ export default function Financeiro() {
                       const f = e.dataTransfer.files?.[0]
                       if (f) setArquivoSistema(f)
                     }}
-                    className={`flex items-center gap-2 border-2 border-dashed rounded-lg px-3 py-3 bg-white text-xs text-gray-600 cursor-pointer transition-colors ${arrastandoSobre === 'sistema' ? 'border-yellow-500 bg-yellow-100' : 'border-yellow-300 hover:bg-yellow-50'}`}>
+                    className={`flex items-center gap-2 border-2 border-dashed rounded-lg px-3 py-3 bg-white text-xs text-gray-600 cursor-pointer transition-colors ${arrastandoSobre === 'sistema' ? 'border-blue-500 bg-blue-100' : 'border-blue-300 hover:bg-blue-50'}`}>
                     <Upload size={13} />
                     <span className="truncate">{arquivoSistema?.name ?? 'Arraste o arquivo aqui ou clique para escolher'}</span>
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => setArquivoSistema(e.target.files?.[0] ?? null)} />
                   </label>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-yellow-800 mb-1">Relatório da operadora (Rede)</label>
+                  <label className="block text-[11px] text-blue-800 mb-1">Relatório da operadora (Rede)</label>
                   <label
                     onDragOver={e => { e.preventDefault(); setArrastandoSobre('rede') }}
                     onDragLeave={() => setArrastandoSobre(null)}
@@ -820,7 +897,7 @@ export default function Financeiro() {
                       const f = e.dataTransfer.files?.[0]
                       if (f) setArquivoRede(f)
                     }}
-                    className={`flex items-center gap-2 border-2 border-dashed rounded-lg px-3 py-3 bg-white text-xs text-gray-600 cursor-pointer transition-colors ${arrastandoSobre === 'rede' ? 'border-yellow-500 bg-yellow-100' : 'border-yellow-300 hover:bg-yellow-50'}`}>
+                    className={`flex items-center gap-2 border-2 border-dashed rounded-lg px-3 py-3 bg-white text-xs text-gray-600 cursor-pointer transition-colors ${arrastandoSobre === 'rede' ? 'border-blue-500 bg-blue-100' : 'border-blue-300 hover:bg-blue-50'}`}>
                     <Upload size={13} />
                     <span className="truncate">{arquivoRede?.name ?? 'Arraste o arquivo aqui ou clique para escolher'}</span>
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => setArquivoRede(e.target.files?.[0] ?? null)} />
@@ -848,9 +925,9 @@ export default function Financeiro() {
                 taxaRede: acc.taxaRede + l.taxaRede, diferencaFinal: acc.diferencaFinal + l.diferencaFinal,
               }), { vendaCartao: 0, recebidoRede: 0, taxaRede: 0, diferencaFinal: 0 })
               return (
-                <div className="overflow-x-auto bg-white rounded-lg border border-yellow-200">
+                <div className="overflow-x-auto bg-white rounded-lg border border-blue-200">
                   <table className="min-w-full text-xs">
-                    <thead><tr className="bg-green-100 text-green-800">
+                    <thead><tr className="bg-blue-100 text-blue-800">
                       <th className="text-left p-2">Loja</th>
                       <th className="text-right p-2">Venda cartão</th>
                       <th className="text-right p-2">Recebido na rede</th>
@@ -860,7 +937,7 @@ export default function Financeiro() {
                     </tr></thead>
                     <tbody>
                       {linhasComNota.map(l => (
-                        <tr key={l.loja} className="border-t border-yellow-100 bg-yellow-50/60">
+                        <tr key={l.loja} className="border-t border-blue-100 bg-blue-50/60">
                           <td className="p-2 whitespace-nowrap font-medium">{l.loja}</td>
                           <td className="p-2 text-right whitespace-nowrap">{fmt(l.vendaCartao)}</td>
                           <td className="p-2 text-right whitespace-nowrap">{fmt(l.recebidoRede)}</td>
@@ -869,7 +946,7 @@ export default function Financeiro() {
                           <td className={`p-2 text-right whitespace-nowrap font-medium ${Math.abs(l.diferencaFinal) > 0.5 ? 'text-red-600' : 'text-gray-700'}`}>{fmt(l.diferencaFinal)}</td>
                         </tr>
                       ))}
-                      <tr className="border-t border-yellow-300 bg-yellow-100 font-semibold">
+                      <tr className="border-t border-blue-300 bg-blue-100 font-semibold">
                         <td className="p-2">Total</td>
                         <td className="p-2 text-right">{fmt(totais.vendaCartao)}</td>
                         <td className="p-2 text-right">{fmt(totais.recebidoRede)}</td>
@@ -882,7 +959,10 @@ export default function Financeiro() {
                 </div>
               )
             })()}
+          </div>
 
+          {/* Conferência de dinheiro */}
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 mb-6">
             {(dinheiroSalvo || dinheiroPreviaCalc) && (() => {
               const linhas = dinheiroSalvo ?? dinheiroPreviaCalc!
               const linhasComNota = linhas.map(l => ({ ...l, diferencaFinal: l.diferenca + despesaPorLoja(l.loja) + erroPorLoja(l.loja) - notasPorLoja(l.loja).dinheiro }))
@@ -890,8 +970,8 @@ export default function Financeiro() {
                 vendaDinheiro: acc.vendaDinheiro + l.vendaDinheiro, fechamentoCaixa: acc.fechamentoCaixa + l.fechamentoCaixa, deposito: acc.deposito + l.deposito, diferencaFinal: acc.diferencaFinal + l.diferencaFinal,
               }), { vendaDinheiro: 0, fechamentoCaixa: 0, deposito: 0, diferencaFinal: 0 })
               return (
-                <div className="overflow-x-auto bg-white rounded-lg border border-yellow-200 mt-4">
-                  <div className="px-3 pt-3 text-sm font-semibold text-yellow-800 flex items-center gap-1.5"><Banknote size={14} /> Conferência de dinheiro</div>
+                <div className="overflow-x-auto bg-white rounded-lg border border-emerald-200">
+                  <div className="px-3 pt-3 text-sm font-semibold text-emerald-800 flex items-center gap-1.5"><Banknote size={14} /> Conferência de dinheiro</div>
                   <table className="min-w-full text-xs">
                     <thead><tr className="bg-emerald-100 text-emerald-800">
                       <th className="text-left p-2">Loja</th>
@@ -906,7 +986,7 @@ export default function Financeiro() {
                     </tr></thead>
                     <tbody>
                       {linhasComNota.map(l => (
-                        <tr key={l.loja} className="border-t border-yellow-100 bg-yellow-50/60">
+                        <tr key={l.loja} className="border-t border-emerald-100 bg-emerald-50/60">
                           <td className="p-2 whitespace-nowrap font-medium">{l.loja}</td>
                           <td className="p-2 text-right whitespace-nowrap">{fmt(l.vendaDinheiro)}</td>
                           <td className="p-2 text-right whitespace-nowrap">
@@ -935,7 +1015,7 @@ export default function Financeiro() {
                           <td className={`p-2 text-right whitespace-nowrap font-medium ${Math.abs(l.diferencaFinal) > 4 ? 'text-red-600' : 'text-gray-700'}`}>{fmt(l.diferencaFinal)}</td>
                         </tr>
                       ))}
-                      <tr className="border-t border-yellow-300 bg-yellow-100 font-semibold">
+                      <tr className="border-t border-emerald-300 bg-emerald-100 font-semibold">
                         <td className="p-2">Total</td>
                         <td className="p-2 text-right">{fmt(totais.vendaDinheiro)}</td>
                         <td className="p-2 text-right">{fmt(totais.fechamentoCaixa)}</td>
@@ -951,16 +1031,41 @@ export default function Financeiro() {
                 </div>
               )
             })()}
+          </div>
 
-            {!conferenciaSalva && (conferenciaPreviaCalc || dinheiroPreviaCalc) && (
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => { setConferenciaPreviaCalc(null); setDinheiroPreviaCalc(null) }} className="btn-secondary text-xs">Recalcular</button>
-                <button onClick={fecharConferencia} className="btn-primary text-xs flex items-center gap-1.5"><Lock size={12} /> Fechar todas as conferências (cartão, dinheiro, notas, despesas e erros)</button>
-              </div>
-            )}
+          {/* Ação compartilhada: fecha cartão + dinheiro + notas + despesas + erros de uma vez */}
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-6 px-1">
+            {conferenciaSalva ? (
+              <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-1">
+                <CheckCircle2 size={12} /> Conferências fechadas
+              </span>
+            ) : <span />}
+            <div className="flex gap-2">
+              {conferenciaSalva && (
+                <button onClick={reabrirConferencia} className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors whitespace-nowrap">
+                  Reabrir conferências
+                </button>
+              )}
+              {!conferenciaSalva && (conferenciaPreviaCalc || dinheiroPreviaCalc) && (
+                <>
+                  <button onClick={() => { setConferenciaPreviaCalc(null); setDinheiroPreviaCalc(null) }} className="btn-secondary text-xs">Recalcular</button>
+                  <button onClick={fecharConferencia} className="btn-primary text-xs flex items-center gap-1.5"><Lock size={12} /> Fechar conferências (cartão + dinheiro)</button>
+                </>
+              )}
+            </div>
+          </div>
 
-            <div className="mt-4 pt-4 border-t border-yellow-200">
-              <h3 className="text-xs font-semibold text-yellow-800 mb-2">Notas fiscais (vendas fora do relatório de pagamento)</h3>
+          {/* Notas fiscais */}
+          <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 mb-6">
+            <button onClick={() => setAbrirNotas(v => !v)} className="w-full flex items-center justify-between text-left">
+              <h3 className="text-sm font-semibold text-purple-800 flex items-center gap-1.5">
+                <Receipt size={15} /> Notas fiscais {notasFiscais.length > 0 && <span className="text-[10px] bg-purple-200 text-purple-800 px-1.5 py-0.5 rounded-full">{notasFiscais.length}</span>}
+              </h3>
+              <ChevronDown size={16} className={`text-purple-700 transition-transform ${abrirNotas ? 'rotate-180' : ''}`} />
+            </button>
+            {abrirNotas && (
+            <div className="mt-3">
+              <p className="text-xs text-purple-700 mb-2">Vendas fora do relatório de forma de pagamento.</p>
               {!conferenciasFechadas && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novaNota.loja} onChange={e => setNovaNota(n => ({ ...n, loja: e.target.value }))}>
@@ -977,7 +1082,7 @@ export default function Financeiro() {
               {notasFiscais.length > 0 && (
                 <div className="space-y-1">
                   {notasFiscais.map(n => (
-                    <div key={n.id} className="flex items-center gap-2 text-xs bg-white border border-yellow-100 rounded-lg px-3 py-1.5">
+                    <div key={n.id} className="flex items-center gap-2 text-xs bg-white border border-purple-100 rounded-lg px-3 py-1.5">
                       <span className="font-medium flex-1">{n.loja}</span>
                       <span className="text-gray-600">{FORMAS_PAGAMENTO_NOTA.find(f => f.valor === n.forma_pagamento)?.label}</span>
                       <span className="font-medium w-24 text-right">{fmt(n.valor)}</span>
@@ -989,9 +1094,19 @@ export default function Financeiro() {
                 </div>
               )}
             </div>
+            )}
+          </div>
 
-            <div className="mt-4 pt-4 border-t border-yellow-200">
-              <h3 className="text-xs font-semibold text-yellow-800 mb-2">Despesas pagas em loja</h3>
+          {/* Despesas pagas em loja */}
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 mb-6">
+            <button onClick={() => setAbrirDespesas(v => !v)} className="w-full flex items-center justify-between text-left">
+              <h3 className="text-sm font-semibold text-rose-800 flex items-center gap-1.5">
+                <Wallet size={15} /> Despesas pagas em loja {despesasLoja.length > 0 && <span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded-full">{despesasLoja.length}</span>}
+              </h3>
+              <ChevronDown size={16} className={`text-rose-700 transition-transform ${abrirDespesas ? 'rotate-180' : ''}`} />
+            </button>
+            {abrirDespesas && (
+            <div className="mt-3">
               {!conferenciasFechadas && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novaDespesa.loja} onChange={e => setNovaDespesa(d => ({ ...d, loja: e.target.value }))}>
@@ -1007,7 +1122,7 @@ export default function Financeiro() {
               {despesasLoja.length > 0 && (
                 <div className="space-y-1">
                   {despesasLoja.map(d => (
-                    <div key={d.id} className="flex items-center gap-2 text-xs bg-white border border-yellow-100 rounded-lg px-3 py-1.5">
+                    <div key={d.id} className="flex items-center gap-2 text-xs bg-white border border-rose-100 rounded-lg px-3 py-1.5">
                       <span className="font-medium w-44 truncate">{d.loja}</span>
                       <span className="text-gray-600 flex-1 truncate">{d.descricao}</span>
                       <span className="font-medium w-24 text-right">{fmt(d.valor)}</span>
@@ -1019,9 +1134,19 @@ export default function Financeiro() {
                 </div>
               )}
             </div>
+            )}
+          </div>
 
-            <div className="mt-4 pt-4 border-t border-yellow-200">
-              <h3 className="text-xs font-semibold text-yellow-800 mb-2">Erros de caixa</h3>
+          {/* Erros de caixa */}
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 mb-6">
+            <button onClick={() => setAbrirErros(v => !v)} className="w-full flex items-center justify-between text-left">
+              <h3 className="text-sm font-semibold text-amber-800 flex items-center gap-1.5">
+                <AlertTriangle size={15} /> Erros de caixa {errosCaixa.length > 0 && <span className="text-[10px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded-full">{errosCaixa.length}</span>}
+              </h3>
+              <ChevronDown size={16} className={`text-amber-700 transition-transform ${abrirErros ? 'rotate-180' : ''}`} />
+            </button>
+            {abrirErros && (
+            <div className="mt-3">
               {!conferenciasFechadas && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novoErro.loja} onChange={e => setNovoErro(n => ({ ...n, loja: e.target.value }))}>
@@ -1037,7 +1162,7 @@ export default function Financeiro() {
               {errosCaixa.length > 0 && (
                 <div className="space-y-1">
                   {errosCaixa.map(e => (
-                    <div key={e.id} className="flex items-center gap-2 text-xs bg-white border border-yellow-100 rounded-lg px-3 py-1.5">
+                    <div key={e.id} className="flex items-center gap-2 text-xs bg-white border border-amber-100 rounded-lg px-3 py-1.5">
                       <span className="font-medium w-44 truncate">{e.loja}</span>
                       <span className="text-gray-600 flex-1 truncate">{e.operadora}</span>
                       <span className="font-medium w-24 text-right">{fmt(e.valor)}</span>
@@ -1049,6 +1174,7 @@ export default function Financeiro() {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* Transferências */}
@@ -1056,20 +1182,20 @@ export default function Financeiro() {
             const transferencias = transferenciasLista
             if (transferencias.length === 0 && saqueSicoobDinheiro <= 0) return null
             return (
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-6">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 mb-6">
                 {transferencias.length > 0 && (
                   <>
-                    <h2 className="text-sm font-semibold text-blue-800 mb-3">Transferências</h2>
-                    <div className="overflow-x-auto bg-white rounded-lg border border-blue-200">
+                    <h2 className="text-sm font-semibold text-indigo-800 mb-3 flex items-center gap-1.5"><Wallet size={15} /> Transferências entre contas</h2>
+                    <div className="overflow-x-auto bg-white rounded-lg border border-indigo-200">
                       <table className="min-w-full text-xs">
-                        <thead><tr className="bg-blue-100 text-blue-800">
+                        <thead><tr className="bg-indigo-100 text-indigo-800">
                           <th className="text-left p-2">De</th>
                           <th className="text-left p-2">Para</th>
                           <th className="text-right p-2">Valor</th>
                         </tr></thead>
                         <tbody>
                           {transferencias.map(t => (
-                            <tr key={t.para} className="border-t border-blue-100">
+                            <tr key={t.para} className="border-t border-indigo-100">
                               <td className="p-2 whitespace-nowrap">{t.de}</td>
                               <td className="p-2 whitespace-nowrap font-medium">{t.para}</td>
                               <td className="p-2 text-right whitespace-nowrap font-medium">{fmt(t.valor)}</td>
@@ -1083,16 +1209,16 @@ export default function Financeiro() {
 
                 {saqueSicoobDinheiro > 0 && (
                   <>
-                    <h3 className="text-sm font-semibold text-blue-800 mt-4 mb-2">Saque</h3>
-                    <div className="overflow-x-auto bg-white rounded-lg border border-blue-200">
+                    <h3 className="text-sm font-semibold text-indigo-800 mt-4 mb-2">Saque</h3>
+                    <div className="overflow-x-auto bg-white rounded-lg border border-indigo-200">
                       <table className="min-w-full text-xs">
-                        <thead><tr className="bg-blue-100 text-blue-800">
+                        <thead><tr className="bg-indigo-100 text-indigo-800">
                           <th className="text-left p-2">De</th>
                           <th className="text-left p-2">Para</th>
                           <th className="text-right p-2">Valor</th>
                         </tr></thead>
                         <tbody>
-                          <tr className="border-t border-blue-100">
+                          <tr className="border-t border-indigo-100">
                             <td className="p-2 whitespace-nowrap">FAPS SICOOB</td>
                             <td className="p-2 whitespace-nowrap font-medium">DINHEIRO</td>
                             <td className="p-2 text-right whitespace-nowrap font-medium">{fmt(saqueSicoobDinheiro)}</td>
@@ -1297,6 +1423,21 @@ export default function Financeiro() {
               <FileText size={16} /> Fechar CP de hoje
             </button>
           </div>
+
+          <div className="flex flex-col items-end gap-2 mt-3">
+            {erroFinalizar && (
+              <p className="text-xs text-red-600 flex items-center gap-1.5"><AlertCircle size={13} /> {erroFinalizar}</p>
+            )}
+            {diaFinalizado ? (
+              <span className="text-xs text-green-700 bg-green-100 px-3 py-2 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 size={14} /> Relatório salvo no OneDrive
+              </span>
+            ) : (
+              <button onClick={finalizarDia} disabled={finalizandoDia} className="btn-secondary flex items-center gap-2 disabled:opacity-50">
+                <CheckCircle2 size={16} /> {finalizandoDia ? 'Salvando no OneDrive...' : 'Finalizar o dia'}
+              </button>
+            )}
+          </div>
         </>
       )}
 
@@ -1442,7 +1583,7 @@ export default function Financeiro() {
               <h3 className="text-lg font-semibold flex items-center gap-2"><Upload size={18} /> Importar lançamento de outro dia</h3>
               <button onClick={() => setShowImportar(false)}><X size={18} className="text-gray-400" /></button>
             </div>
-            <p className="text-xs text-gray-400 mb-3">Os dados de outros dias são atualizados automaticamente sempre que você clica em "Visualizar lançamentos" em qualquer dia.</p>
+            <p className="text-xs text-gray-400 mb-3">Os dados de outros dias são atualizados automaticamente sempre que você clica em "Atualizar lançamentos" em qualquer dia.</p>
             <div className="flex gap-2 mb-4">
               <input type="date" className="input text-sm flex-1" value={diaImportar} onChange={e => setDiaImportar(e.target.value)} />
               <button onClick={buscarLancamentosImportar} disabled={!diaImportar || buscandoImportar} className="btn-secondary text-sm">
@@ -1480,6 +1621,15 @@ export default function Financeiro() {
             </div>
             <label className="block text-xs text-gray-500 mb-1">Link da planilha "Contas a Pagar" (OneDrive)</label>
             <input className="input text-sm" placeholder="https://1drv.ms/x/..." value={arquivoUrl} onChange={e => setArquivoUrl(e.target.value)} onBlur={salvarArquivo} />
+
+            <label className="block text-xs text-gray-500 mb-1 mt-4">Pasta no OneDrive para salvar o relatório do dia</label>
+            <input className="input text-sm" placeholder="Financeiro/Relatórios" value={pastaOnedrive} onChange={e => setPastaOnedrive(e.target.value)} onBlur={salvarArquivo} />
+            <p className="text-[11px] text-gray-400 mt-1">A pasta precisa já existir no seu OneDrive. Use barra para subpastas, ex: Financeiro/Relatórios.</p>
+
+            <button onClick={conectarMicrosoft} className="text-xs text-brand-600 hover:underline mt-3 block">
+              {conectado ? 'Reconectar Microsoft (liberar permissão de escrita no OneDrive)' : 'Conectar Microsoft'}
+            </button>
+
             <button onClick={() => setMostrarConfig(false)} className="btn-primary w-full mt-4">Pronto</button>
           </div>
         </div>
