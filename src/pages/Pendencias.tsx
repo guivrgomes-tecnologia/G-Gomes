@@ -210,7 +210,7 @@ export default function Pendencias() {
 
   async function loadData() {
     const [{ data: pends }, { data: perfis }, { data: setsData }, { data: reunData }] = await Promise.all([
-      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*), pendencia_participantes(usuario_id, profile:profiles(*)), pendencia_tarefas(*)').order('created_at', { ascending: false }),
+      supabase.from('pendencias').select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(*), para_usuario:profiles!pendencias_para_usuario_id_fkey(*), setor:setores(*), pendencia_participantes(usuario_id, profile:profiles(*)), pendencia_tarefas(*), pendencia_comentarios(id)').order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').order('nome'),
       supabase.from('setores').select('*').order('nome'),
       supabase.from('reunioes').select('id, titulo, pasta:reuniao_pastas(nome)').order('created_at', { ascending: false }),
@@ -437,9 +437,12 @@ export default function Pendencias() {
                         onDragStart={() => setDraggingId(pend.id)}
                         onDragEnd={() => setDraggingId(null)}
                         onClick={() => setExpandido(pend.id)}
-                        className={`${corFundo} rounded-lg border-t border-r border-b border-l-4 ${corOrigem} p-3 cursor-pointer hover:shadow-md transition-shadow ${isAtrasado(pend) ? 'border-red-300' : 'border-gray-200'} ${draggingId === pend.id ? 'opacity-40' : ''}`}>
+                        className={`${corFundo} rounded-lg border-t border-r border-b border-l-4 ${corOrigem} p-3 cursor-pointer hover:shadow-md transition-shadow relative ${isAtrasado(pend) ? 'border-red-300' : 'border-gray-200'} ${draggingId === pend.id ? 'opacity-40' : ''}`}>
+                        {(pend.pendencia_comentarios?.length ?? 0) > 0 && (
+                          <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-green-500" title="Tem comentário" />
+                        )}
                         <div className={`h-1 rounded-full mb-2 ${PRIO_COLORS[pend.prioridade].split(' ')[0]}`} />
-                        <p className="text-sm font-medium text-gray-900 mb-1.5">{pend.titulo}</p>
+                        <p className="text-sm font-medium text-gray-900 mb-1.5 pr-3">{pend.titulo}</p>
                         <div className="flex flex-wrap gap-1 mb-2">
                           {isAtrasado(pend) && <span className="badge bg-red-100 text-red-700 text-[10px]">Atrasado</span>}
                           {souParticipante && <span className="badge bg-orange-50 text-orange-700 text-[10px]">Comigo</span>}
@@ -485,6 +488,9 @@ export default function Pendencias() {
               <div className="p-4 flex items-start gap-4 cursor-pointer" onClick={() => setExpandido(pend.id)}>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
+                    {(pend.pendencia_comentarios?.length ?? 0) > 0 && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-500 shrink-0" title="Tem comentário" />
+                    )}
                     <p className="font-medium text-gray-900">{pend.titulo}</p>
                     {isAtrasado(pend) && <span className="badge bg-red-100 text-red-700">Atrasado</span>}
                   </div>
