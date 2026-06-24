@@ -118,16 +118,27 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Descobre o tamanho real usado da planilha, em vez de chutar um número de linhas fixo
+    let ultimaLinha = 18000 // fallback se a chamada abaixo falhar por algum motivo
+    try {
+      const usedRes = await fetch(`${workbookBase}/worksheets/${aba.id}/usedRange?$select=rowCount`, { headers })
+      const used = await usedRes.json()
+      if (typeof used.rowCount === 'number' && used.rowCount > 0) {
+        ultimaLinha = used.rowCount
+      }
+    } catch { /* usa o fallback */ }
+
     // Lê a planilha em blocos de linhas, todos em paralelo (bem mais rápido que um atrás do outro)
     const COLS = 11 // A..K
     const BLOCO = 3000
-    const NUM_BLOCOS = 6 // cobre até a linha ~18000, com margem confortável
+    const PRIMEIRA_LINHA = 3 // pula as 2 primeiras linhas (totais soltos + cabeçalho)
+    const NUM_BLOCOS = Math.max(1, Math.ceil((ultimaLinha - PRIMEIRA_LINHA + 1) / BLOCO)) + 1 // +1 de margem extra
     const buscarTodos = modo === 'todos'
     const alvo = String(dataAlvo ?? new Date().toISOString().slice(0, 10))
 
     const enderecos: string[] = []
     for (let i = 0; i < NUM_BLOCOS; i++) {
-      const inicio = 3 + i * BLOCO // pula as 2 primeiras linhas (totais soltos + cabeçalho)
+      const inicio = PRIMEIRA_LINHA + i * BLOCO
       const fim = inicio + BLOCO - 1
       enderecos.push(`A${inicio}:${colLetra(COLS - 1)}${fim}`)
     }
@@ -142,7 +153,7 @@ Deno.serve(async (req) => {
     const encontrados: any[] = []
     for (let b = 0; b < respostas.length; b++) {
       const valores: any[][] = respostas[b].values ?? []
-      const inicioBloco = 3 + b * BLOCO
+      const inicioBloco = PRIMEIRA_LINHA + b * BLOCO
       for (let i = 0; i < valores.length; i++) {
         const row = valores[i]
         const vencimentoISO = serialParaISO(row[3])

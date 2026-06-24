@@ -630,25 +630,45 @@ export default function Financeiro() {
     return (linhas ?? []).filter(l => l.contaDeposito === conta).reduce((s, l) => s + l.deposito, 0)
   }
 
-  const transfItauParaSicoob = (saldos['FAPS ITAU'] ?? 0) + recebidoRedeTotal() + depositoPorConta('FAPS ITAU') - pagamentosPorConta('FAPS ITAU')
+  // "Loja 01" representa o fluxo que antes passava pela FAPS ITAU: saldo inicial + depósitos - pagamentos.
+  // O recebido da rede (lojas físicas) agora vai direto para a FAPS SICOOB, então não entra mais nessa conta.
+  const transfItauParaSicoob = (saldos['FAPS ITAU'] ?? 0) + depositoPorConta('FAPS ITAU') - pagamentosPorConta('FAPS ITAU')
   const transfSicoobParaGGomes = pagamentosPorConta('G GOMES SICOOB') - (saldos['G GOMES SICOOB'] ?? 0)
   const transfSicoobParaTS = pagamentosPorConta('TS SICOOB') - (saldos['TS SICOOB'] ?? 0)
   const transfSicoobParaPessoalBradesco = pagamentosPorConta('PESSOAL BRADESCO')
   const transfSicoobParaPessoalItau = pagamentosPorConta('PESSOAL ITAU')
   const saqueSicoobDinheiro = pagamentosPorConta('DINHEIRO')
 
-  const saldoSicoobAntes = (saldos['FAPS SICOOB'] ?? 0) + transfItauParaSicoob
+  const saldoSicoobAntes = (saldos['FAPS SICOOB'] ?? 0) + transfItauParaSicoob + recebidoRedeTotal()
     - transfSicoobParaGGomes - transfSicoobParaTS - transfSicoobParaPessoalBradesco - transfSicoobParaPessoalItau - saqueSicoobDinheiro
 
   const CONTAS_RESUMO = ['FAPS ITAU', 'FAPS SICOOB', 'G GOMES SICOOB', 'TS SICOOB', 'PESSOAL BRADESCO', 'PESSOAL ITAU', 'DINHEIRO']
 
+  // Cada loja com recebido na rede entra como uma transferência direta para a FAPS SICOOB.
+  const transferenciasRedeLista = (conferenciaSalva ?? conferenciaPreviaCalc ?? [])
+    .filter(l => l.recebidoRede > 0)
+    .map(l => ({ de: l.loja, para: 'FAPS SICOOB', valor: l.recebidoRede }))
+
   const transferenciasLista = [
-    { de: 'FAPS ITAU', para: 'FAPS SICOOB', valor: transfItauParaSicoob },
+    { de: '01 - DEPOSITO 180', para: 'FAPS SICOOB', valor: transfItauParaSicoob },
+    ...transferenciasRedeLista,
     { de: 'FAPS SICOOB', para: 'G GOMES SICOOB', valor: transfSicoobParaGGomes },
     { de: 'FAPS SICOOB', para: 'TS SICOOB', valor: transfSicoobParaTS },
     { de: 'FAPS SICOOB', para: 'PESSOAL BRADESCO', valor: transfSicoobParaPessoalBradesco },
     { de: 'FAPS SICOOB', para: 'PESSOAL ITAU', valor: transfSicoobParaPessoalItau },
   ].filter(t => t.valor > 0)
+
+  // Cor por conta de origem: lojas 01-08 (e FAPS ITAU) em laranja, FAPS SICOOB em verde,
+  // G GOMES SICOOB em roxo, TS SICOOB em amarelo. Demais contas ficam num cinza neutro.
+  // `bg`/`text` = versão suave (pra preencher linhas inteiras). `headerBg`/`headerText` = versão forte (pra títulos/cabeçalhos).
+  function corConta(nome: string): { bg: string; text: string; bar: string; headerBg: string; headerText: string } {
+    if (/^0[1-8]\b/.test(nome) || nome === 'FAPS ITAU') return { bg: 'bg-orange-50', text: 'text-orange-800', bar: 'bg-orange-400', headerBg: 'bg-orange-500', headerText: 'text-white' }
+    if (nome === 'FAPS SICOOB') return { bg: 'bg-green-50', text: 'text-green-800', bar: 'bg-green-400', headerBg: 'bg-green-600', headerText: 'text-white' }
+    if (nome === 'G GOMES SICOOB') return { bg: 'bg-purple-50', text: 'text-purple-800', bar: 'bg-purple-400', headerBg: 'bg-purple-600', headerText: 'text-white' }
+    if (nome === 'TS SICOOB') return { bg: 'bg-yellow-50', text: 'text-yellow-800', bar: 'bg-yellow-400', headerBg: 'bg-yellow-400', headerText: 'text-yellow-950' }
+    if (nome === 'Não pagar') return { bg: 'bg-gray-100', text: 'text-gray-500', bar: 'bg-gray-300', headerBg: 'bg-gray-400', headerText: 'text-white' }
+    return { bg: 'bg-slate-50', text: 'text-slate-700', bar: 'bg-slate-400', headerBg: 'bg-slate-500', headerText: 'text-white' }
+  }
 
   const pagamentosCPAgrupados = (() => {
     const lista = (listaExibida ?? []).filter(l => !l.redirecionado_para)
@@ -656,13 +676,18 @@ export default function Financeiro() {
     const grupos: { conta: string; itens: Lancamento[] }[] = []
     for (const conta of ordemContas) {
       const itens = lista.filter(l => (l.pagar_em ?? '') === conta).sort((a, b) => (a.valor ?? 0) - (b.valor ?? 0))
-      if (itens.length > 0) grupos.push({ conta: conta || 'Sem conta definida', itens })
+      if (itens.length > 0) grupos.push({ conta: conta || 'Não pagar', itens })
     }
     return grupos
   })()
 
+  // Lançamentos adiados para outro dia: mostramos só os dados do lançamento + a nova data,
+  // sem informação de pagamento (pagar_em/tipo), já que não vão ser pagos nesta data.
+  const pagamentosAdiados = (listaExibida ?? []).filter(l => !!l.redirecionado_para)
+    .sort((a, b) => (a.redirecionado_para ?? '').localeCompare(b.redirecionado_para ?? ''))
+
   function saldoAntesPagamentos(conta: string): number {
-    if (conta === 'FAPS ITAU') return (saldos['FAPS ITAU'] ?? 0) + recebidoRedeTotal() + depositoPorConta('FAPS ITAU') - transfItauParaSicoob
+    if (conta === 'FAPS ITAU') return (saldos['FAPS ITAU'] ?? 0) + depositoPorConta('FAPS ITAU') - transfItauParaSicoob
     if (conta === 'FAPS SICOOB') return saldoSicoobAntes
     if (conta === 'G GOMES SICOOB') return (saldos['G GOMES SICOOB'] ?? 0) + transfSicoobParaGGomes
     if (conta === 'TS SICOOB') return (saldos['TS SICOOB'] ?? 0) + transfSicoobParaTS
@@ -690,6 +715,7 @@ export default function Financeiro() {
       .num{text-align:right}
       .total{font-weight:bold;background:#f3f4f6}
       .grupo{font-weight:bold;text-transform:uppercase;background:#e5e7eb}
+      .naopagar td{text-decoration:line-through;color:#9ca3af}
     `
     const linhasSaldoInicial = CONTAS_SALDO_INICIAL.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldos[c] ?? 0))}</td></tr>`).join('')
     const linhasCartaoHtml = linhasCartao.map(l => `<tr><td>${esc(l.loja)}</td><td class="num">${esc(fmt(l.vendaCartao))}</td><td class="num">${esc(fmt(l.recebidoRede))}</td><td class="num">${esc(fmt(l.taxaRede))}</td><td class="num">${esc(fmt(l.diferenca - notasPorLoja(l.loja).cartao))}</td></tr>`).join('')
@@ -703,7 +729,8 @@ export default function Financeiro() {
     const linhasSaldoDepois = CONTAS_RESUMO.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldoDepoisPagamentos(c)))}</td></tr>`).join('')
     const linhasPagPorConta = BANCOS.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(pagamentosPorConta(c)))}</td></tr>`).join('')
     const linhasPagamentos = pagamentosCPAgrupados.map(g => `<tr class="grupo"><td colspan="10">${esc(g.conta)}</td></tr>` +
-      g.itens.map(l => `<tr><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${esc(l.tipo)}</td><td>${esc(l.pagar_em)}</td><td>${l.pago ? 'Pago' : '—'}</td></tr>`).join('')).join('')
+      g.itens.map(l => `<tr${g.conta === 'Não pagar' ? ' class="naopagar"' : ''}><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${esc(l.tipo)}</td><td>${esc(l.pagar_em)}</td><td>${l.pago ? 'Pago' : '—'}</td></tr>`).join('')).join('')
+    const linhasAdiados = pagamentosAdiados.map(l => `<tr><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${l.redirecionado_para ? esc(new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td></tr>`).join('')
 
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório financeiro — ${esc(diaSelecionado)}</title><style>${css}</style></head><body>
       <h1>Relatório financeiro completo</h1>
@@ -728,6 +755,8 @@ export default function Financeiro() {
 
       <h2>Pagamentos previstos — total ${esc(fmt(total))}</h2>
       <table><thead><tr><th>Loja</th><th>Venc.</th><th>Fornecedor</th><th>Fatura</th><th>Descrição</th><th>Observação</th><th>Valor</th><th>Tipo</th><th>Pagar em</th><th>Pago</th></tr></thead><tbody>${linhasPagamentos}</tbody></table>
+
+      ${pagamentosAdiados.length > 0 ? `<h2>Adiados</h2><table><thead><tr><th>Loja</th><th>Venc.</th><th>Fornecedor</th><th>Fatura</th><th>Descrição</th><th>Observação</th><th>Valor</th><th>Nova data</th></tr></thead><tbody>${linhasAdiados}</tbody></table>` : ''}
 
       <h2>Pagamentos por conta</h2>
       <table><thead><tr><th>Conta</th><th>Total</th></tr></thead><tbody>${linhasPagPorConta}<tr class="total"><td>Total</td><td class="num">${esc(fmt(BANCOS.reduce((s, c) => s + pagamentosPorConta(c), 0)))}</td></tr></tbody></table>
@@ -1403,33 +1432,41 @@ export default function Financeiro() {
           )}
 
           {/* Pagamentos por conta */}
-          <div className="rounded-xl border border-gray-300 bg-gray-50 p-4 mt-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Pagamentos por conta</h2>
-            <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
-              {BANCOS.map(c => (
-                <div key={c} className="bg-white p-2.5 flex items-center justify-between text-xs gap-2">
-                  <span className="text-gray-600 truncate">{c}</span>
-                  <span className="font-medium whitespace-nowrap">{fmt(pagamentosPorConta(c))}</span>
+          <div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4 mt-6">
+            <h2 className="text-sm font-semibold text-orange-800 mb-3 flex items-center gap-1.5">
+              <Banknote size={15} /> Pagamentos por conta
+            </h2>
+            {BANCOS.filter(c => pagamentosPorConta(c) > 0).length === 0 ? (
+              <p className="text-xs text-orange-700/70 italic">Nenhum pagamento neste dia.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-px bg-orange-200 rounded-lg overflow-hidden border border-orange-200">
+                {BANCOS.filter(c => pagamentosPorConta(c) > 0).map(c => (
+                  <div key={c} className="bg-white p-2.5 flex items-center justify-between text-xs gap-2">
+                    <span className="text-gray-600 truncate">{c}</span>
+                    <span className="font-medium whitespace-nowrap text-orange-700">{fmt(pagamentosPorConta(c))}</span>
+                  </div>
+                ))}
+                <div className="bg-orange-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2 text-orange-900">
+                  <span>Total</span>
+                  <span>{fmt(BANCOS.reduce((s, c) => s + pagamentosPorConta(c), 0))}</span>
                 </div>
-              ))}
-              <div className="bg-gray-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2">
-                <span>Total</span>
-                <span>{fmt(BANCOS.reduce((s, c) => s + pagamentosPorConta(c), 0))}</span>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Resumo de saldo depois dos pagamentos */}
-          <div className="rounded-xl border border-gray-300 bg-gray-50 p-4 mt-6">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">Saldo depois dos pagamentos</h2>
-            <div className="grid grid-cols-2 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
+          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 mt-6">
+            <h2 className="text-sm font-semibold text-teal-800 mb-3 flex items-center gap-1.5">
+              <Wallet size={15} /> Saldo depois dos pagamentos
+            </h2>
+            <div className="grid grid-cols-2 gap-px bg-teal-200 rounded-lg overflow-hidden border border-teal-200">
               {CONTAS_RESUMO.map(c => (
                 <div key={c} className="bg-white p-2.5 flex items-center justify-between text-xs gap-2">
                   <span className="text-gray-600 truncate">{c}</span>
-                  <span className="font-medium whitespace-nowrap">{fmt(saldoDepoisPagamentos(c))}</span>
+                  <span className="font-medium whitespace-nowrap text-teal-700">{fmt(saldoDepoisPagamentos(c))}</span>
                 </div>
               ))}
-              <div className="bg-gray-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2">
+              <div className="bg-teal-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2 text-teal-900">
                 <span>Total</span>
                 <span>{fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoDepoisPagamentos(c), 0))}</span>
               </div>
@@ -1475,109 +1512,97 @@ export default function Financeiro() {
 
           <h1 className="hidden print:block text-xl font-bold text-gray-900 mb-4 capitalize">CP — {fmtData(diaSelecionado)}</h1>
 
-          {/* Recebido na Rede */}
-          <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase">Recebido na Rede</h2>
-          <table className="min-w-full text-[10px] border border-gray-300 mb-6">
-            <thead><tr className="bg-gray-100">
-              <th className="text-left p-1.5 border border-gray-300">Loja</th>
-              <th className="text-right p-1.5 border border-gray-300">Recebido</th>
-              <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
-              <th className="text-left p-1.5 border border-gray-300">Loja</th>
-              <th className="text-right p-1.5 border border-gray-300">Recebido</th>
-              <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
-            </tr></thead>
-            <tbody>
-              {(() => {
-                const lojas = conferenciaSalva ?? conferenciaPreviaCalc ?? []
-                const pares: (typeof lojas[number] | null)[][] = []
-                for (let i = 0; i < lojas.length; i += 2) pares.push([lojas[i], lojas[i + 1] ?? null])
-                return pares.map((par, i) => (
-                  <tr key={i}>
-                    {par.map((l, j) => l ? (
-                      <Fragment key={j}>
-                        <td className="p-1.5 border border-gray-300">{l.loja}</td>
-                        <td className="p-1.5 border border-gray-300 text-right">{fmt(l.recebidoRede)}</td>
-                        <td className="p-1.5 border border-gray-300 text-center"><span className="caixa-caneta" /></td>
-                      </Fragment>
-                    ) : (
-                      <Fragment key={j}>
-                        <td className="p-1.5 border border-gray-300" />
-                        <td className="p-1.5 border border-gray-300" />
-                        <td className="p-1.5 border border-gray-300" />
-                      </Fragment>
-                    ))}
-                  </tr>
-                ))
-              })()}
-            </tbody>
-          </table>
-
-          {/* Transferências */}
-          {(transferenciasLista.length > 0 || saqueSicoobDinheiro > 0) && (
+          {/* Transferências (inclui o recebido na rede de cada loja, direto para a FAPS SICOOB) */}
+          {transferenciasLista.length > 0 && (
             <>
-              <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase">Transferências</h2>
+              <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
+                <span className="w-1.5 h-4 rounded bg-blue-400" /> Transferências
+              </h2>
               <table className="min-w-full text-[10px] border border-gray-300 mb-6">
                 <thead><tr className="bg-gray-100">
                   <th className="text-left p-1.5 border border-gray-300">De</th>
                   <th className="text-left p-1.5 border border-gray-300">Para</th>
                   <th className="text-right p-1.5 border border-gray-300">Valor</th>
                   <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
+                  <th className="text-left p-1.5 border border-gray-300">De</th>
+                  <th className="text-left p-1.5 border border-gray-300">Para</th>
+                  <th className="text-right p-1.5 border border-gray-300">Valor</th>
+                  <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
                 </tr></thead>
                 <tbody>
-                  {transferenciasLista.map(t => (
-                    <tr key={t.para}>
-                      <td className="p-1.5 border border-gray-300">{t.de}</td>
-                      <td className="p-1.5 border border-gray-300">{t.para}</td>
-                      <td className="p-1.5 border border-gray-300 text-right">{fmt(t.valor)}</td>
-                      <td className="p-1.5 border border-gray-300 text-center"><span className="caixa-caneta" /></td>
-                    </tr>
-                  ))}
-                  {saqueSicoobDinheiro > 0 && (
-                    <tr>
-                      <td className="p-1.5 border border-gray-300">FAPS SICOOB</td>
-                      <td className="p-1.5 border border-gray-300">DINHEIRO (saque)</td>
-                      <td className="p-1.5 border border-gray-300 text-right">{fmt(saqueSicoobDinheiro)}</td>
-                      <td className="p-1.5 border border-gray-300 text-center"><span className="caixa-caneta" /></td>
-                    </tr>
-                  )}
+                  {(() => {
+                    const pares: (typeof transferenciasLista[number] | null)[][] = []
+                    for (let i = 0; i < transferenciasLista.length; i += 2) pares.push([transferenciasLista[i], transferenciasLista[i + 1] ?? null])
+                    return pares.map((par, i) => (
+                      <tr key={i}>
+                        {par.map((t, j) => {
+                          if (!t) return (
+                            <Fragment key={j}>
+                              <td className="p-1.5 border border-gray-300" />
+                              <td className="p-1.5 border border-gray-300" />
+                              <td className="p-1.5 border border-gray-300" />
+                              <td className="p-1.5 border border-gray-300" />
+                            </Fragment>
+                          )
+                          const cor = corConta(t.de)
+                          return (
+                            <Fragment key={j}>
+                              <td className={`p-1.5 border border-gray-300 ${cor.bg}`}>
+                                <span className={`inline-flex items-center gap-1 font-semibold ${cor.text}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${cor.bar}`} />{t.de}
+                                </span>
+                              </td>
+                              <td className={`p-1.5 border border-gray-300 ${cor.bg} ${cor.text}`}>{t.para}</td>
+                              <td className={`p-1.5 border border-gray-300 text-right font-medium ${cor.bg} ${cor.text}`}>{fmt(t.valor)}</td>
+                              <td className={`p-1.5 border border-gray-300 text-center ${cor.bg}`}><span className="caixa-caneta" /></td>
+                            </Fragment>
+                          )
+                        })}
+                      </tr>
+                    ))
+                  })()}
                 </tbody>
               </table>
             </>
           )}
 
           {/* Pagamentos previstos */}
-          <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase">Pagamentos previstos</h2>
-          <table className="min-w-full text-sm border border-gray-300 mb-6">
+          <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
+            <span className="w-1.5 h-4 rounded bg-slate-500" /> Pagamentos previstos
+          </h2>
+          <table className="min-w-full text-[10px] border border-gray-300 mb-6">
             <thead><tr className="bg-gray-100">
-              <th className="text-center p-1.5 border border-gray-300">Loja</th>
-              <th className="text-center p-1.5 border border-gray-300">Venc.</th>
-              <th className="text-center p-1.5 border border-gray-300">Fornecedor</th>
-              <th className="text-center p-1.5 border border-gray-300">Fatura</th>
-              <th className="text-center p-1.5 border border-gray-300">Descrição</th>
-              <th className="text-center p-1.5 border border-gray-300">Observação</th>
-              <th className="text-center p-1.5 border border-gray-300">Valor</th>
-              <th className="text-center p-1.5 border border-gray-300">Tipo</th>
-              <th className="text-center p-1.5 border border-gray-300">Pagar em</th>
-              <th className="text-center p-1.5 border border-gray-300 w-12">Incluído</th>
+              <th className="text-center p-1 border border-gray-300">Loja</th>
+              <th className="text-center p-1 border border-gray-300">Venc.</th>
+              <th className="text-center p-1 border border-gray-300">Fornecedor</th>
+              <th className="text-center p-1 border border-gray-300">Fatura</th>
+              <th className="text-center p-1 border border-gray-300">Descrição</th>
+              <th className="text-center p-1 border border-gray-300">Observação</th>
+              <th className="text-center p-1 border border-gray-300">Valor</th>
+              <th className="text-center p-1 border border-gray-300">Tipo</th>
+              <th className="text-center p-1 border border-gray-300">Pagar em</th>
+              <th className="text-center p-1 border border-gray-300 w-12">Incluído</th>
             </tr></thead>
             <tbody>
-              {pagamentosCPAgrupados.map(grupo => (
+              {pagamentosCPAgrupados.map(grupo => {
+                const cor = corConta(grupo.conta)
+                return (
                 <Fragment key={grupo.conta}>
-                  <tr className="bg-gray-200">
-                    <td colSpan={10} className="p-1.5 border border-gray-300 font-bold uppercase text-center">{grupo.conta}</td>
+                  <tr className={cor.headerBg}>
+                    <td colSpan={10} className={`p-1 border border-gray-300 font-bold uppercase text-center ${cor.headerText}`}>{grupo.conta}</td>
                   </tr>
                   {grupo.itens.map((l, i) => (
-                    <tr key={l.id ?? `${grupo.conta}-${i}`}>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.empresa}</td>
-                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.fornecedor}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.nota}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.descricao}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.observacao}</td>
-                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.tipo}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.pagar_em}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">
+                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' ? 'line-through text-gray-400' : ''}`}>
+                      <td className="p-1 border border-gray-300 text-center">{l.empresa}</td>
+                      <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.fornecedor}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.nota}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.descricao}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.observacao}</td>
+                      <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.tipo}</td>
+                      <td className="p-1 border border-gray-300 text-center">{l.pagar_em}</td>
+                      <td className="p-1 border border-gray-300 text-center">
                         {l.id && (
                           <input type="checkbox" className="accent-green-600 w-4 h-4 print:hidden" checked={!!l.aprovado}
                             onChange={e => atualizarAprovado(l.id!, e.target.checked)} />
@@ -1587,9 +1612,44 @@ export default function Financeiro() {
                     </tr>
                   ))}
                 </Fragment>
-              ))}
+              )})}
             </tbody>
           </table>
+
+          {/* Adiados: lançamentos movidos para outro dia — sem dados de pagamento, só lançamento + nova data */}
+          {pagamentosAdiados.length > 0 && (
+            <>
+              <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
+                <span className="w-1.5 h-4 rounded bg-red-400" /> Adiados
+              </h2>
+              <table className="min-w-full text-sm border border-gray-300 mb-6">
+                <thead><tr className="bg-red-50">
+                  <th className="text-center p-1.5 border border-gray-300">Loja</th>
+                  <th className="text-center p-1.5 border border-gray-300">Venc.</th>
+                  <th className="text-center p-1.5 border border-gray-300">Fornecedor</th>
+                  <th className="text-center p-1.5 border border-gray-300">Fatura</th>
+                  <th className="text-center p-1.5 border border-gray-300">Descrição</th>
+                  <th className="text-center p-1.5 border border-gray-300">Observação</th>
+                  <th className="text-center p-1.5 border border-gray-300">Valor</th>
+                  <th className="text-center p-1.5 border border-gray-300 text-red-700">Nova data</th>
+                </tr></thead>
+                <tbody>
+                  {pagamentosAdiados.map((l, i) => (
+                    <tr key={l.id ?? `adiado-${i}`}>
+                      <td className="p-1.5 border border-gray-300 text-center">{l.empresa}</td>
+                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                      <td className="p-1.5 border border-gray-300 text-center">{l.fornecedor}</td>
+                      <td className="p-1.5 border border-gray-300 text-center">{l.nota}</td>
+                      <td className="p-1.5 border border-gray-300 text-center">{l.descricao}</td>
+                      <td className="p-1.5 border border-gray-300 text-center">{l.observacao}</td>
+                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
+                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap font-semibold text-red-700 bg-red-50">{l.redirecionado_para ? new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>,
         document.body
       )}
