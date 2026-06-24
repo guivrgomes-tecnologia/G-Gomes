@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Landmark, CheckCircle2, ChevronLeft, ChevronRight, Eye, AlertCircle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -27,22 +27,27 @@ export default function FinanceiroListagem() {
   const [diasFechados, setDiasFechados] = useState<Set<string>>(new Set())
   const [totalPorDia, setTotalPorDia] = useState<Record<string, number>>({})
   const [sincronizando, setSincronizando] = useState(false)
+  const sincronizandoRef = useRef(false)
   const [apagandoDuplicados, setApagandoDuplicados] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => { carregarMes() }, [ano, mes])
 
   async function atualizarLancamentos() {
+    if (sincronizandoRef.current) return
+    sincronizandoRef.current = true
     setSincronizando(true)
     setErro('')
     const { data: cfg } = await supabase.from('financeiro_config').select('arquivo_url').eq('usuario_id', user!.id).maybeSingle()
     if (!cfg?.arquivo_url) {
       setErro('Configure o link da planilha na página de um dia primeiro.')
+      sincronizandoRef.current = false
       setSincronizando(false)
       return
     }
     const { erro } = await sincronizarLancamentos(user!.id, cfg.arquivo_url)
     if (erro) setErro(erro)
+    sincronizandoRef.current = false
     setSincronizando(false)
     await carregarMes()
   }

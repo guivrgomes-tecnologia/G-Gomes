@@ -109,14 +109,14 @@ export default function Dashboard() {
     // Card soluções: pendências que criei e o destinatário apresentou solução
     const { data: solucao } = await supabase
       .from('pendencias')
-      .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)')
+      .select('*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome), pendencia_comentarios(id)')
       .eq('de_usuario_id', profile!.id)
       .eq('status', 'solucao_apresentada')
       .order('created_at', { ascending: false })
     setPendenciasSolucao(solucao ?? [])
 
     const nowIso = now.toISOString()
-    const pendSelect = '*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)'
+    const pendSelect = '*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome), pendencia_comentarios(id)'
     const [pendComigoData, minhasPendData, atrasados] = await Promise.all([
       supabase.from('pendencias').select(pendSelect).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']).order('created_at', { ascending: false }),
       supabase.from('pendencias').select(pendSelect).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']).order('created_at', { ascending: false }),
@@ -278,7 +278,12 @@ export default function Dashboard() {
                       <li key={p.id} onClick={() => setPendModalId(p.id)}
                         className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
+                          <p className="text-xs font-medium text-gray-900 truncate flex items-center gap-1.5">
+                            {(p.pendencia_comentarios?.length ?? 0) > 0 && (
+                              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Tem comentário" />
+                            )}
+                            {p.titulo}
+                          </p>
                           <p className="text-xs text-gray-400 truncate">
                             {euSouDest ? `De: ${(p.de_usuario as any)?.nome?.split(' ')[0]}` : `Para: ${(p.para_usuario as any)?.nome?.split(' ')[0]}`}
                             {p.prazo && (() => {
@@ -312,7 +317,12 @@ export default function Dashboard() {
                     <li key={p.id} onClick={() => setPendModalId(p.id)}
                       className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
+                        <p className="text-xs font-medium text-gray-900 truncate flex items-center gap-1.5">
+                          {(p.pendencia_comentarios?.length ?? 0) > 0 && (
+                            <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Tem comentário" />
+                          )}
+                          {p.titulo}
+                        </p>
                         <p className="text-xs text-gray-400 truncate">Para: {(p.para_usuario as any)?.nome?.split(' ')[0]} · solução disponível</p>
                       </div>
                       <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full shrink-0">Ver</span>
@@ -428,7 +438,12 @@ export default function Dashboard() {
                   <li key={p.id} onClick={() => { setShowPendComigo(false); setPendModalId(p.id) }}
                     className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{p.titulo}</p>
+                      <p className="font-medium text-gray-900 truncate flex items-center gap-1.5">
+                        {(p.pendencia_comentarios?.length ?? 0) > 0 && (
+                          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Tem comentário" />
+                        )}
+                        {p.titulo}
+                      </p>
                       <p className="text-xs text-gray-400">De: {(p.de_usuario as any)?.nome?.split(' ')[0]}</p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.prioridade === 'alta' ? 'bg-red-100 text-red-700' : p.prioridade === 'media' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -460,7 +475,12 @@ export default function Dashboard() {
                   <li key={p.id} onClick={() => { setShowMinhasPend(false); setPendModalId(p.id) }}
                     className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{p.titulo}</p>
+                      <p className="font-medium text-gray-900 truncate flex items-center gap-1.5">
+                        {(p.pendencia_comentarios?.length ?? 0) > 0 && (
+                          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Tem comentário" />
+                        )}
+                        {p.titulo}
+                      </p>
                       <p className="text-xs text-gray-400">Para: {(p.para_usuario as any)?.nome?.split(' ')[0]}</p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.status === 'solucao_apresentada' ? 'bg-purple-100 text-purple-700' : p.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>

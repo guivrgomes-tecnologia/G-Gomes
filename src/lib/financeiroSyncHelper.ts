@@ -113,7 +113,14 @@ async function sincronizarLancamentosInterno(userId: string, arquivoUrl: string)
 
     await Promise.all(atualizacoes)
     if (novos.length > 0) {
-      await supabase.from('financeiro_lancamentos').insert(novos)
+      // Insere um por um: se o banco recusar por já existir (corrida com outra aba/sincronização
+      // rodando ao mesmo tempo), ignora — significa que o outro processo já inseriu, não duplica.
+      await Promise.all(novos.map(async novo => {
+        const { error: erroInsert } = await supabase.from('financeiro_lancamentos').insert(novo)
+        if (erroInsert && erroInsert.code !== '23505') {
+          console.error('Erro ao inserir lançamento:', erroInsert)
+        }
+      }))
     }
 
     const sobrando = existentesDoDia.filter(r => !usados.has(chaveLinha(r)) && !r.redirecionado_para && !r.origem_manual)

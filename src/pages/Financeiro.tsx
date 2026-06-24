@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff } from 'lucide-react'
@@ -101,6 +101,7 @@ export default function Financeiro() {
   const [lancamentosSalvos, setLancamentosSalvos] = useState<Lancamento[]>([])
   const [previa, setPrevia] = useState<Lancamento[] | null>(null)
   const [sincronizando, setSincronizando] = useState(false)
+  const sincronizandoRef = useRef(false)
   const [fechando, setFechando] = useState(false)
   const [erro, setErro] = useState('')
   const [saldos, setSaldos] = useState<Record<string, number>>({})
@@ -467,16 +468,19 @@ export default function Financeiro() {
   }
 
   async function visualizar() {
-    if (fechado || sincronizando) return
+    if (fechado || sincronizandoRef.current) return
     if (!arquivoUrl) { setErro('Configure o link da planilha primeiro.'); setMostrarConfig(true); return }
+    sincronizandoRef.current = true
     setSincronizando(true)
     setErro('')
     const { erro } = await sincronizarLancamentos(user!.id, arquivoUrl)
     if (erro) {
       setErro(erro)
+      sincronizandoRef.current = false
       setSincronizando(false)
       return
     }
+    sincronizandoRef.current = false
     setSincronizando(false)
     await carregarDia()
   }
