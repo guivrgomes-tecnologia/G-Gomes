@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, X, ChevronRight, ChevronLeft, Pencil, Trash2, Users, Settings, Building2 } from 'lucide-react'
-import { supabase, Profile } from '../lib/supabase'
+import { supabase, Profile, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import Avatar from '../components/Avatar'
 
 type Setor = {
   id: string; nome: string; descricao: string | null; cor: string; criado_por: string
@@ -100,10 +101,20 @@ export default function Processos() {
       setor_id: setorAtivo.id,
       criado_por: user!.id,
     }
+    const responsavelMudou = payload.responsavel_id && payload.responsavel_id !== user!.id &&
+      (!editandoProcesso || payload.responsavel_id !== processoAtivo?.responsavel_id)
     if (editandoProcesso && processoAtivo) {
       await supabase.from('processos').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', processoAtivo.id)
     } else {
       await supabase.from('processos').insert(payload)
+    }
+    if (responsavelMudou) {
+      await criarNotificacoes([{
+        usuario_id: payload.responsavel_id!, tipo: 'processo_responsavel',
+        titulo: `Você foi marcado como responsável por "${payload.titulo}"`,
+        mensagem: `${profile?.nome ?? 'Alguém'} te marcou em um processo`,
+        link: `/processos`,
+      }])
     }
     setSaving(false); setShowNovoProcesso(false); setEditandoProcesso(false); setProcessoAtivo(null)
     loadProcessos(setorAtivo.id)
@@ -289,8 +300,15 @@ export default function Processos() {
               )}
             </div>
 
+            <div className="flex items-center gap-1.5 text-xs text-gray-400 mt-4 pt-3 border-t border-gray-100">
+              <span>Criado por</span>
+              <span className="font-medium text-gray-500">{equipe.find(p => p.id === processoAtivo.criado_por)?.nome ?? 'Desconhecido'}</span>
+              <span>•</span>
+              <span>{new Date(processoAtivo.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+
             {isAdmin && (
-              <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+              <div className="flex gap-2 mt-3">
                 <button onClick={() => abrirEditarProcesso(processoAtivo)} className="btn-secondary flex items-center gap-2 flex-1">
                   <Pencil size={14} /> Editar
                 </button>
@@ -397,9 +415,7 @@ export default function Processos() {
                 return (
                   <label key={p.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input type="checkbox" checked={temAcesso} onChange={() => toggleUsuarioSetor(p.id)} className="w-4 h-4 accent-brand-600" />
-                    <div className="w-8 h-8 rounded-full bg-brand-500 text-white flex items-center justify-center text-sm font-bold">
-                      {p.nome[0].toUpperCase()}
-                    </div>
+                    <Avatar nome={p.nome} avatarUrl={p.avatar_url} size={32} className="text-sm font-bold" />
                     <div>
                       <p className="text-sm font-medium text-gray-900">{p.nome}</p>
                       <p className="text-xs text-gray-400">{p.cargo ?? p.email}</p>

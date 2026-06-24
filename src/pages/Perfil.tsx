@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { User, Mail, Lock, Check } from 'lucide-react'
+import { User, Mail, Lock, Check, Camera } from 'lucide-react'
+import Avatar from '../components/Avatar'
 
 export default function Perfil() {
-  const { profile, user } = useAuth()
+  const { profile, user, refreshProfile } = useAuth()
 
   const [nome, setNome] = useState(profile?.nome ?? '')
   const [cargo, setCargo] = useState(profile?.cargo ?? '')
@@ -18,6 +19,32 @@ export default function Perfil() {
   const [msgPerfil, setMsgPerfil] = useState('')
   const [msgEmail, setMsgEmail] = useState('')
   const [msgSenha, setMsgSenha] = useState('')
+  const [uploadingFoto, setUploadingFoto] = useState(false)
+  const [msgFoto, setMsgFoto] = useState('')
+
+  async function selecionarFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    if (file.size > 5 * 1024 * 1024) { setMsgFoto('Imagem muito grande (máx. 5MB).'); return }
+    setUploadingFoto(true)
+    setMsgFoto('')
+    const ext = file.name.split('.').pop()
+    const path = `${profile.id}/avatar.${ext}`
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (uploadError) {
+      setUploadingFoto(false)
+      setMsgFoto('Erro ao enviar imagem.')
+      return
+    }
+    const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
+    const url = `${pub.publicUrl}?t=${Date.now()}`
+    const { error: updateError } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', profile.id)
+    setUploadingFoto(false)
+    if (updateError) { setMsgFoto('Erro ao salvar foto.'); return }
+    await refreshProfile()
+    setMsgFoto('Foto atualizada!')
+    setTimeout(() => setMsgFoto(''), 3000)
+  }
 
   async function salvarPerfil() {
     if (!nome.trim()) return
@@ -64,6 +91,22 @@ export default function Perfil() {
   return (
     <div className="p-8 max-w-xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-8">Meu perfil</h1>
+
+      {/* Foto de perfil */}
+      <div className="card p-6 mb-6 flex items-center gap-4">
+        <div className="relative shrink-0">
+          <Avatar nome={profile?.nome ?? '?'} avatarUrl={profile?.avatar_url} size={64} className="text-xl" />
+          <label className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-brand-600 text-white flex items-center justify-center cursor-pointer hover:bg-brand-700 transition-colors">
+            <Camera size={12} />
+            <input type="file" accept="image/*" className="hidden" onChange={selecionarFoto} disabled={uploadingFoto} />
+          </label>
+        </div>
+        <div>
+          <p className="text-sm font-medium text-gray-800">Foto de perfil</p>
+          <p className="text-xs text-gray-400">{uploadingFoto ? 'Enviando...' : 'Clique no ícone da câmera para trocar'}</p>
+          {msgFoto && <p className={`text-xs mt-0.5 ${msgFoto.includes('Erro') ? 'text-red-600' : 'text-green-600'}`}>{msgFoto}</p>}
+        </div>
+      </div>
 
       {/* Dados pessoais */}
       <div className="card p-6 mb-6">

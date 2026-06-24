@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function GoogleCallback() {
+export default function MicrosoftCallback() {
   const navigate = useNavigate()
   const { user, loading } = useAuth()
   const [status, setStatus] = useState<'loading' | 'ok' | 'erro'>('loading')
@@ -11,35 +11,29 @@ export default function GoogleCallback() {
   const tentou = useRef(false)
 
   useEffect(() => {
-    if (loading) return           // aguarda auth carregar
-    if (tentou.current) return    // evita rodar duas vezes
+    if (loading) return
+    if (tentou.current) return
     tentou.current = true
 
     const code = new URLSearchParams(window.location.search).get('code')
 
     if (!code) { setErroMsg('Código de autorização não encontrado.'); setStatus('erro'); return }
-    if (!user)  { setErroMsg('Usuário não autenticado.'); setStatus('erro'); return }
+    if (!user) { setErroMsg('Usuário não autenticado.'); setStatus('erro'); return }
 
     supabase.auth.getSession().then(({ data: sessionData }) => {
       const token = sessionData.session?.access_token
-      return fetch('https://djlxshgumupdzoqpgvui.supabase.co/functions/v1/google-auth-callback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbHhzaGd1bXVwZHpvcXBndnVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MzM1MDAsImV4cCI6MjA5NzIwOTUwMH0.WhjPIPEzSmHik0s5B6nFqGcrls27UoLVhgYoadkqJTo',
-        },
-        body: JSON.stringify({ code, user_id: user!.id }),
+      return supabase.functions.invoke('microsoft-auth-callback', {
+        body: { code, user_id: user!.id },
+        headers: { Authorization: `Bearer ${token}` },
       })
-    }).then(async (res) => {
-      const data = await res.json()
-      if (!res.ok || data?.error) {
-        setErroMsg(data?.error ?? JSON.stringify(data?.details) ?? `HTTP ${res.status}`)
+    }).then(({ data, error }) => {
+      if (error || data?.error) {
+        setErroMsg(data?.error ?? error?.message ?? 'Erro desconhecido')
         setStatus('erro')
         return
       }
       setStatus('ok')
-      setTimeout(() => navigate('/agenda'), 2000)
+      setTimeout(() => navigate('/financeiro'), 1500)
     }).catch((err) => {
       setErroMsg(err?.message ?? 'Erro de rede')
       setStatus('erro')
@@ -52,7 +46,7 @@ export default function GoogleCallback() {
         {status === 'loading' && (
           <>
             <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-gray-600">Conectando ao Google Calendar...</p>
+            <p className="text-gray-600">Conectando à Microsoft...</p>
           </>
         )}
         {status === 'ok' && (
@@ -62,15 +56,15 @@ export default function GoogleCallback() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-gray-900 font-semibold">Google Calendar conectado!</p>
-            <p className="text-gray-500 text-sm mt-1">Redirecionando para a agenda...</p>
+            <p className="text-gray-900 font-semibold">Microsoft conectado!</p>
+            <p className="text-gray-500 text-sm mt-1">Redirecionando...</p>
           </>
         )}
         {status === 'erro' && (
           <>
             <p className="text-red-600 font-semibold mb-2">Erro ao conectar</p>
             {erroMsg && <p className="text-xs text-gray-500 mb-4">{erroMsg}</p>}
-            <button onClick={() => navigate('/agenda')} className="btn-primary">Voltar para agenda</button>
+            <button onClick={() => navigate('/financeiro')} className="btn-primary">Voltar</button>
           </>
         )}
       </div>

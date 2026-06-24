@@ -9,6 +9,10 @@ const MODULOS = [
   { key: 'agenda',     label: 'Agenda' },
   { key: 'processos',  label: 'Processos' },
   { key: 'pendencias', label: 'Pendências' },
+  { key: 'metas',      label: 'Metas' },
+  { key: 'vendas',     label: 'Histórico (Vendas)' },
+  { key: 'financeiro', label: 'Financeiro' },
+  { key: 'comissoes',  label: 'Comissões' },
   { key: 'reunioes',   label: 'Reuniões' },
 ]
 
@@ -169,9 +173,13 @@ export default function Admin() {
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">
-                    {u.nome?.[0]?.toUpperCase()}
-                  </div>
+                  {u.avatar_url ? (
+                    <img src={u.avatar_url} alt={u.nome} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-sm shrink-0">
+                      {u.nome?.[0]?.toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-gray-900 text-sm">{u.nome}</p>

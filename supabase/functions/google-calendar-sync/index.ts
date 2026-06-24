@@ -46,57 +46,81 @@ function buildGcalEvent(ev: any) {
     : { dateTime: endDate, timeZone: 'America/Sao_Paulo' }
 
   return {
-    summary: ev.titulo,
+    summary: ev.titulo_google ?? ev.titulo,
     ...(ev.descricao ? { description: ev.descricao } : {}),
     start,
     end,
+    reminders: {
+      useDefault: false,
+      overrides: (Array.isArray(ev.lembretes_minutos) && ev.lembretes_minutos.length > 0
+        ? ev.lembretes_minutos
+        : (ev.lembrete_minutos > 0 ? [ev.lembrete_minutos] : [])
+      ).slice(0, 5).map((minutes: number) => ({ method: 'popup', minutes })),
+    },
+    ...(ev.criar_meet ? {
+      conferenceData: {
+        createRequest: {
+          requestId: ev.id ?? crypto.randomUUID(),
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      },
+    } : {}),
   }
+}
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, content-type' } })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   const { action, user_id, evento } = await req.json()
-  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SERVICE_ROLE_KEY')!)
 
   const accessToken = await getAccessToken(supabase, user_id)
   if (!accessToken) {
     return new Response(JSON.stringify({ error: 'not_connected' }), {
       status: 401,
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
 
   if (action === 'create') {
-    const res = await fetch(BASE, { method: 'POST', headers, body: JSON.stringify(buildGcalEvent(evento)) })
+    const url = evento.criar_meet ? `${BASE}?conferenceDataVersion=1` : BASE
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(buildGcalEvent(evento)) })
     const gcal = await res.json()
-    if (gcal.id) {
+    if (gcal.id && evento.atualizar_tabela_eventos !== false) {
       await supabase.from('eventos').update({ google_event_id: gcal.id }).eq('id', evento.id)
     }
-    return new Response(JSON.stringify({ google_event_id: gcal.id, htmlLink: gcal.htmlLink }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    return new Response(JSON.stringify({ google_event_id: gcal.id, htmlLink: gcal.htmlLink, hangoutLink: gcal.hangoutLink ?? null }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   if (action === 'update' && evento.google_event_id) {
-    await fetch(`${BASE}/${evento.google_event_id}`, { method: 'PUT', headers, body: JSON.stringify(buildGcalEvent(evento)) })
-    return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    const url = evento.criar_meet ? `${BASE}/${evento.google_event_id}?conferenceDataVersion=1` : `${BASE}/${evento.google_event_id}`
+    const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(buildGcalEvent(evento)) })
+    const gcal = await res.json()
+    return new Response(JSON.stringify({ ok: true, hangoutLink: gcal.hangoutLink ?? null }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   if (action === 'delete' && evento.google_event_id) {
     await fetch(`${BASE}/${evento.google_event_id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } })
     return new Response(JSON.stringify({ ok: true }), {
-      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 
   return new Response(JSON.stringify({ ok: true }), {
-    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 })

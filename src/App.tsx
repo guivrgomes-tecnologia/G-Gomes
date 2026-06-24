@@ -10,6 +10,15 @@ import Reunioes from './pages/Reunioes'
 import Perfil from './pages/Perfil'
 import Admin from './pages/Admin'
 import GoogleCallback from './pages/GoogleCallback'
+import MicrosoftCallback from './pages/MicrosoftCallback'
+import Financeiro from './pages/Financeiro'
+import ResetPassword from './pages/ResetPassword'
+import Casa from './pages/Casa'
+import DocumentosEmpresa from './pages/DocumentosEmpresa'
+import Metas from './pages/Metas'
+import Historico from './pages/Historico'
+import Comissoes from './pages/Comissoes'
+import Notificacoes from './pages/Notificacoes'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -27,13 +36,23 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/auth/google/callback" element={<PrivateRoute><GoogleCallback /></PrivateRoute>} />
+          <Route path="/auth/microsoft/callback" element={<PrivateRoute><MicrosoftCallback /></PrivateRoute>} />
           <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="agenda" element={<Agenda />} />
             <Route path="processos" element={<Processos />} />
             <Route path="pendencias" element={<Pendencias />} />
             <Route path="reunioes" element={<Reunioes />} />
+            <Route path="casa" element={<Casa />} />
+            <Route path="documentos" element={<DocumentosEmpresa />} />
+            <Route path="metas" element={<Metas />} />
+            <Route path="historico" element={<Historico />} />
+            <Route path="comissoes" element={<Comissoes />} />
+            <Route path="financeiro" element={<Financeiro />} />
+            <Route path="financeiro/:dia" element={<Financeiro />} />
+            <Route path="notificacoes" element={<Notificacoes />} />
             <Route path="perfil" element={<Perfil />} />
             <Route path="admin" element={<Admin />} />
           </Route>

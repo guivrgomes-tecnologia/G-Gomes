@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, MapPin, Flame, ArrowRight, Pencil, Trash2, CalendarPlus } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, Flame, ArrowRight } from 'lucide-react'
 import { supabase, Evento, Pendencia } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
+import PendenciaDetalheModal from '../components/PendenciaDetalheModal'
+import NovaPendenciaModal from '../components/NovaPendenciaModal'
+import NovoEventoModal from '../components/NovoEventoModal'
+import EventoDetalheModal from '../components/EventoDetalheModal'
 
 type Stats = {
   eventosAmanha: number
   eventosSemana: number
+  eventosAtrasados: number
   pendenciasMinhas: number
   pendenciasEnviadas: number
 }
@@ -14,15 +19,25 @@ type Stats = {
 export default function Dashboard() {
   const { profile, user } = useAuth()
   const navigate = useNavigate()
-  const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
+  const [stats, setStats] = useState<Stats>({ eventosAmanha: 0, eventosSemana: 0, eventosAtrasados: 0, pendenciasMinhas: 0, pendenciasEnviadas: 0 })
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
   const [pendenciasSolucao, setPendenciasSolucao] = useState<Pendencia[]>([])
   const [loading, setLoading] = useState(true)
-  const [eventoAtivo, setEventoAtivo] = useState<Evento | null>(null)
-  const [pendenciaAtiva, setPendenciaAtiva] = useState<Pendencia | null>(null)
-  const [solucaoInput, setSolucaoInput] = useState('')
-  const [showSolucao, setShowSolucao] = useState(false)
+  const [showAtrasados, setShowAtrasados] = useState(false)
+  const [eventosAtrasados, setEventosAtrasados] = useState<Evento[]>([])
+  const [showAmanha, setShowAmanha] = useState(false)
+  const [eventosAmanha, setEventosAmanha] = useState<Evento[]>([])
+  const [showSemana, setShowSemana] = useState(false)
+  const [eventosSemana, setEventosSemana] = useState<Evento[]>([])
+  const [showPendComigo, setShowPendComigo] = useState(false)
+  const [pendComigo, setPendComigo] = useState<Pendencia[]>([])
+  const [showMinhasPend, setShowMinhasPend] = useState(false)
+  const [minhasPend, setMinhasPend] = useState<Pendencia[]>([])
+  const [pendModalId, setPendModalId] = useState<string | null>(null)
+  const [eventoModalId, setEventoModalId] = useState<string | null>(null)
+  const [showNovaPendencia, setShowNovaPendencia] = useState(false)
+  const [showNovoEvento, setShowNovoEvento] = useState(false)
 
   useEffect(() => {
     if (profile) load()
@@ -43,23 +58,36 @@ export default function Dashboard() {
     const segStr = localDate(seg)
     const domStr = localDate(dom)
 
-    const { data: meusHoje } = await supabase
-      .from('eventos').select('*')
-      .gte('data_inicio', today).lte('data_inicio', today + 'T23:59:59').order('data_inicio')
+    // data_inicio é salvo em UTC para eventos com hora — um evento às 23h local pode
+    // já estar no dia seguinte em UTC. Por isso buscamos com 1 dia de margem de cada lado
+    // e filtramos pela data local exata no cliente, em vez de comparar strings direto no banco.
+    function dataLocalEvento(ev: Evento): string {
+      if (ev.dia_inteiro) return ev.data_inicio.slice(0, 10)
+      return localDate(new Date(ev.data_inicio))
+    }
+    const janelaInicio = new Date(seg); janelaInicio.setDate(seg.getDate() - 1)
+    const janelaFim = new Date(dom); janelaFim.setDate(dom.getDate() + 2)
+    const janelaInicioStr = localDate(janelaInicio)
+    const janelaFimStr = localDate(janelaFim)
+
+    const { data: meusJanela } = await supabase
+      .from('eventos').select('*').eq('criado_por', user!.id)
+      .gte('data_inicio', janelaInicioStr).lte('data_inicio', janelaFimStr + 'T23:59:59').order('data_inicio')
 
     const { data: participacoes } = await supabase
       .from('evento_participantes').select('evento_id').eq('usuario_id', user!.id)
 
     const idsParticipando = (participacoes ?? []).map((p: any) => p.evento_id)
-    let extrasHoje: Evento[] = []
+    let extrasJanela: Evento[] = []
     if (idsParticipando.length > 0) {
       const { data } = await supabase.from('eventos').select('*')
-        .in('id', idsParticipando).gte('data_inicio', today).lte('data_inicio', today + 'T23:59:59')
-      const meusIds = new Set((meusHoje ?? []).map(e => e.id))
-      extrasHoje = (data ?? []).filter(e => !meusIds.has(e.id))
+        .in('id', idsParticipando).gte('data_inicio', janelaInicioStr).lte('data_inicio', janelaFimStr + 'T23:59:59')
+      const meusIds = new Set((meusJanela ?? []).map(e => e.id))
+      extrasJanela = (data ?? []).filter(e => !meusIds.has(e.id))
     }
 
-    setEventosHoje([...(meusHoje ?? []), ...extrasHoje].sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
+    const todosNaJanela = [...(meusJanela ?? []), ...extrasJanela]
+    setEventosHoje(todosNaJanela.filter(ev => dataLocalEvento(ev) === today).sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
 
     const { data: alta } = await supabase
       .from('pendencias')
@@ -71,7 +99,12 @@ export default function Dashboard() {
     // solucao_apresentada só some do card alta prioridade se eu sou o destinatário (não o criador)
     setPendenciasAlta((alta ?? []).filter(p =>
       p.status !== 'solucao_apresentada' || p.de_usuario_id === profile!.id
-    ))
+    ).sort((a, b) => {
+      if (!a.prazo && !b.prazo) return 0
+      if (!a.prazo) return 1
+      if (!b.prazo) return -1
+      return a.prazo.localeCompare(b.prazo)
+    }))
 
     // Card soluções: pendências que criei e o destinatário apresentou solução
     const { data: solucao } = await supabase
@@ -82,74 +115,53 @@ export default function Dashboard() {
       .order('created_at', { ascending: false })
     setPendenciasSolucao(solucao ?? [])
 
-    const [evAmanha, evSemana, pend, pendEnv] = await Promise.all([
-      supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', amanhaStr).lte('data_inicio', amanhaStr + 'T23:59:59'),
-      supabase.from('eventos').select('id', { count: 'exact', head: true }).gte('data_inicio', segStr).lte('data_inicio', domStr + 'T23:59:59'),
-      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']),
-      supabase.from('pendencias').select('id', { count: 'exact', head: true }).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']),
+    const nowIso = now.toISOString()
+    const pendSelect = '*, de_usuario:profiles!pendencias_de_usuario_id_fkey(nome), para_usuario:profiles!pendencias_para_usuario_id_fkey(nome)'
+    const [pendComigoData, minhasPendData, atrasados] = await Promise.all([
+      supabase.from('pendencias').select(pendSelect).eq('para_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento']).order('created_at', { ascending: false }),
+      supabase.from('pendencias').select(pendSelect).eq('de_usuario_id', profile?.id ?? '').in('status', ['aberta', 'em_andamento', 'solucao_apresentada']).order('created_at', { ascending: false }),
+      supabase.from('eventos').select('*').eq('criado_por', user!.id).lt('data_fim', nowIso).eq('concluido', false).eq('dia_inteiro', false).order('data_inicio', { ascending: false }),
     ])
+
+    let extrasAtrasados: Evento[] = []
+    if (idsParticipando.length > 0) {
+      const { data: pAtrasados } = await supabase.from('eventos').select('*')
+        .in('id', idsParticipando).lt('data_fim', nowIso).eq('concluido', false).eq('dia_inteiro', false)
+      const atrasadosIds = new Set((atrasados.data ?? []).map(e => e.id))
+      extrasAtrasados = (pAtrasados ?? []).filter(e => !atrasadosIds.has(e.id))
+    }
+
+    const todosAtrasados = [...(atrasados.data ?? []), ...extrasAtrasados]
+    const todosAmanha = todosNaJanela.filter(ev => dataLocalEvento(ev) === amanhaStr)
+    const todosSemana = todosNaJanela.filter(ev => dataLocalEvento(ev) >= segStr && dataLocalEvento(ev) <= domStr)
+
+    setEventosAtrasados(todosAtrasados)
+    setEventosAmanha(todosAmanha.sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
+    setEventosSemana(todosSemana.sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)))
+    setPendComigo(pendComigoData.data ?? [])
+    setMinhasPend(minhasPendData.data ?? [])
     setStats({
-      eventosAmanha:      evAmanha.count ?? 0,
-      eventosSemana:      evSemana.count ?? 0,
-      pendenciasMinhas:   pend.count ?? 0,
-      pendenciasEnviadas: pendEnv.count ?? 0,
+      eventosAmanha:      todosAmanha.length,
+      eventosSemana:      todosSemana.length,
+      eventosAtrasados:   todosAtrasados.length,
+      pendenciasMinhas:   pendComigoData.data?.length ?? 0,
+      pendenciasEnviadas: minhasPendData.data?.length ?? 0,
     })
     setLoading(false)
   }
 
-  async function mudarStatusPendencia(status: Pendencia['status']) {
-    if (!pendenciaAtiva) return
-    await supabase.from('pendencias').update({ status }).eq('id', pendenciaAtiva.id)
-    const updated = { ...pendenciaAtiva, status }
-    setPendenciaAtiva(updated)
-    setPendenciasAlta(prev => status === 'resolvida' || status === 'solucao_apresentada'
-      ? prev.filter(p => p.id !== pendenciaAtiva.id)
-      : prev.map(p => p.id === pendenciaAtiva.id ? updated : p)
-    )
-    if (status === 'resolvida') {
-      setPendenciasSolucao(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
-      setPendenciaAtiva(null)
-    }
-  }
 
-  async function salvarSolucaoDash() {
-    if (!pendenciaAtiva || !solucaoInput.trim()) return
-    await supabase.from('pendencias').update({ solucao: solucaoInput.trim(), status: 'solucao_apresentada' }).eq('id', pendenciaAtiva.id)
-    setPendenciasAlta(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
-    setPendenciaAtiva(null)
-    setSolucaoInput(''); setShowSolucao(false)
-  }
-
-  async function deletarPendencia() {
-    if (!pendenciaAtiva) return
-    if (!confirm('Apagar esta pendência?')) return
-    await supabase.from('pendencias').delete().eq('id', pendenciaAtiva.id)
-    setPendenciasAlta(prev => prev.filter(p => p.id !== pendenciaAtiva.id))
-    setPendenciaAtiva(null)
-  }
-
-  async function criarEventoPendencia() {
-    if (!pendenciaAtiva) return
-    const { data: ev } = await supabase.from('eventos').insert({
-      titulo: pendenciaAtiva.titulo, descricao: pendenciaAtiva.descricao || null,
-      data_inicio: new Date().toISOString(), dia_inteiro: true,
-      cor: '#ef4444', concluido: false, criado_por: user!.id,
-    }).select('id').single()
-    if (ev) { setPendenciaAtiva(null); navigate('/agenda') }
-  }
-
-  async function toggleConcluido(ev: Evento) {
-    await supabase.from('eventos').update({ concluido: !ev.concluido }).eq('id', ev.id)
-    const updated = { ...ev, concluido: !ev.concluido }
-    setEventosHoje(prev => prev.map(e => e.id === ev.id ? updated : e))
-    setEventoAtivo(updated)
+  async function abrirEvento(ev: Evento) {
+    const { data: pendData } = await supabase.from('pendencias').select('id').eq('evento_id', ev.id).order('created_at', { ascending: false }).limit(1)
+    if (pendData && pendData.length > 0) { setPendModalId(pendData[0].id); return }
+    setEventoModalId(ev.id)
   }
 
   const cards = [
-    { label: 'Eventos amanhã',      value: stats.eventosAmanha,      icon: Calendar,    color: 'bg-indigo-50 text-indigo-600', link: '/agenda' },
-    { label: 'Eventos esta semana', value: stats.eventosSemana,      icon: Calendar,    color: 'bg-sky-50 text-sky-600',       link: '/agenda?view=semana' },
-    { label: 'Pendências comigo',   value: stats.pendenciasMinhas,   icon: AlertCircle, color: 'bg-red-50 text-red-600',       link: '/pendencias' },
-    { label: 'Minhas pendências',   value: stats.pendenciasEnviadas, icon: Send,        color: 'bg-purple-50 text-purple-600', link: '/pendencias?aba=minhas' },
+    { label: 'Eventos amanhã',      value: stats.eventosAmanha,      icon: Calendar,    color: 'bg-indigo-50 text-indigo-600', onClick: () => setShowAmanha(true) },
+    { label: 'Eventos esta semana', value: stats.eventosSemana,      icon: Calendar,    color: 'bg-sky-50 text-sky-600',       onClick: () => setShowSemana(true) },
+    { label: 'Pendências comigo',   value: stats.pendenciasMinhas,   icon: AlertCircle, color: 'bg-orange-50 text-orange-600', onClick: () => setShowPendComigo(true) },
+    { label: 'Minhas pendências',   value: stats.pendenciasEnviadas, icon: Send,        color: 'bg-purple-50 text-purple-600', onClick: () => setShowMinhasPend(true) },
   ]
 
   return (
@@ -174,7 +186,7 @@ export default function Dashboard() {
         <div className="space-y-6">
           {/* Ações rápidas */}
           <div className="grid grid-cols-3 gap-2 sm:gap-4">
-            <Link to="/agenda?novo=1" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
+            <button onClick={() => setShowNovoEvento(true)} className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
               <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-indigo-50 group-hover:bg-indigo-100 flex items-center justify-center shrink-0 transition-colors">
                 <Plus size={13} className="text-indigo-600" />
               </div>
@@ -182,8 +194,8 @@ export default function Dashboard() {
                 <p className="text-xs sm:text-sm font-semibold text-gray-800 leading-tight">Novo<br className="sm:hidden"/> evento</p>
                 <p className="text-xs text-gray-400 hidden sm:block">Adicionar à agenda</p>
               </div>
-            </Link>
-            <Link to="/pendencias?novo=1" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
+            </button>
+            <button onClick={() => setShowNovaPendencia(true)} className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
               <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-red-50 group-hover:bg-red-100 flex items-center justify-center shrink-0 transition-colors">
                 <Plus size={13} className="text-red-500" />
               </div>
@@ -191,7 +203,7 @@ export default function Dashboard() {
                 <p className="text-xs sm:text-sm font-semibold text-gray-800 leading-tight">Nova<br className="sm:hidden"/> pendência</p>
                 <p className="text-xs text-gray-400 hidden sm:block">Criar e atribuir</p>
               </div>
-            </Link>
+            </button>
             <Link to="/reunioes" className="card p-2 sm:p-5 hover:shadow-md transition-shadow border-dashed border-2 border-gray-200 hover:border-brand-400 flex flex-col sm:flex-row items-center sm:gap-3 gap-1 group text-center sm:text-left">
               <div className="w-6 h-6 sm:w-10 sm:h-10 rounded-full bg-purple-50 group-hover:bg-purple-100 flex items-center justify-center shrink-0 transition-colors">
                 <Video size={13} className="text-purple-600" />
@@ -226,7 +238,7 @@ export default function Dashboard() {
                     const atrasado = !ev.concluido && !ev.dia_inteiro && inicio < agora
                     const emBreve = !ev.concluido && !ev.dia_inteiro && inicio >= agora && inicio <= new Date(agora.getTime() + 3600000)
                     return (
-                      <li key={ev.id} onClick={() => setEventoAtivo(ev)}
+                      <li key={ev.id} onClick={() => abrirEvento(ev)}
                         className={`flex items-center gap-2 px-5 cursor-pointer transition-colors ${ev.concluido ? 'py-1.5 bg-green-50 hover:bg-green-100' : atrasado ? 'py-3 bg-red-50 hover:bg-red-100' : emBreve ? 'py-3 bg-yellow-50 hover:bg-yellow-100' : 'py-3 hover:bg-gray-50'}`}>
                         <div className={`rounded-full shrink-0 transition-all ${ev.concluido ? 'w-1 h-4 opacity-40' : 'w-1 h-10'}`} style={{ backgroundColor: ev.cor }} />
                         <div className="flex-1 min-w-0">
@@ -263,12 +275,19 @@ export default function Dashboard() {
                   {pendenciasAlta.map(p => {
                     const euSouDest = p.para_usuario_id === profile?.id
                     return (
-                      <li key={p.id} onClick={() => setPendenciaAtiva(p)}
+                      <li key={p.id} onClick={() => setPendModalId(p.id)}
                         className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
                           <p className="text-xs text-gray-400 truncate">
                             {euSouDest ? `De: ${(p.de_usuario as any)?.nome?.split(' ')[0]}` : `Para: ${(p.para_usuario as any)?.nome?.split(' ')[0]}`}
+                            {p.prazo && (() => {
+                              const temHora = p.prazo.includes('T')
+                              const d = new Date(temHora ? p.prazo : p.prazo + 'T12:00:00')
+                              const dataFmt = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+                              const horaFmt = temHora ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null
+                              return <> · {dataFmt}{horaFmt && ` ${horaFmt}`}</>
+                            })()}
                           </p>
                         </div>
                       </li>
@@ -290,7 +309,7 @@ export default function Dashboard() {
                 </div>
                 <ul className="divide-y divide-gray-100 max-h-[132px] lg:max-h-none overflow-y-auto">
                   {pendenciasSolucao.map(p => (
-                    <li key={p.id} onClick={() => setPendenciaAtiva(p)}
+                    <li key={p.id} onClick={() => setPendModalId(p.id)}
                       className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition-colors">
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-gray-900 truncate">{p.titulo}</p>
@@ -304,15 +323,22 @@ export default function Dashboard() {
             )}
 
             {/* Cards de estatísticas */}
-            <div className="grid grid-cols-2 gap-3">
-              {cards.map(({ label, value, icon: Icon, color, link }) => (
-                <Link key={label} to={link} className="card p-3 hover:shadow-md transition-shadow">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <button onClick={() => setShowAtrasados(true)} className="card p-3 hover:shadow-md transition-shadow text-left">
+                <div className="inline-flex p-1.5 rounded-lg bg-red-50 text-red-600 mb-2">
+                  <Clock size={15} />
+                </div>
+                <p className="text-xl font-bold text-gray-900">{stats.eventosAtrasados}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Eventos atrasados</p>
+              </button>
+              {cards.map(({ label, value, icon: Icon, color, onClick }) => (
+                <button key={label} onClick={onClick} className="card p-3 hover:shadow-md transition-shadow text-left">
                   <div className={`inline-flex p-1.5 rounded-lg ${color} mb-2`}>
                     <Icon size={15} />
                   </div>
                   <p className="text-xl font-bold text-gray-900">{value}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-                </Link>
+                </button>
               ))}
             </div>
             </div>
@@ -320,134 +346,205 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Modal detalhe do evento */}
+      {/* Modal eventos amanhã */}
+      {showAmanha && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowAmanha(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Calendar size={16} className="text-indigo-500" /> Eventos amanhã</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{eventosAmanha.length} evento{eventosAmanha.length !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => setShowAmanha(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            {eventosAmanha.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">Nenhum evento amanhã.</p> : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {eventosAmanha.map(ev => (
+                  <li key={ev.id} onClick={() => { setShowAmanha(false); abrirEvento(ev) }}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{ev.titulo}</p>
+                      {ev.descricao && <p className="text-xs text-gray-400 truncate">{ev.descricao}</p>}
+                    </div>
+                    <span className="text-xs text-gray-500 shrink-0 flex items-center gap-1"><Clock size={11} />{ev.dia_inteiro ? 'Dia inteiro' : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 pt-4 border-t"><button onClick={() => { setShowAmanha(false); navigate('/agenda') }} className="w-full text-sm text-brand-600 hover:underline">Ver na agenda →</button></div>
+          </div>
+        </div>
+      )}
 
-      {eventoAtivo && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setEventoAtivo(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: eventoAtivo.cor }} />
-                <h3 className={`font-semibold text-gray-900 text-lg leading-tight ${eventoAtivo.concluido ? 'line-through text-gray-400' : ''}`}>
-                  {eventoAtivo.titulo}
+      {/* Modal eventos esta semana */}
+      {showSemana && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowSemana(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Calendar size={16} className="text-sky-500" /> Eventos esta semana</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{eventosSemana.length} evento{eventosSemana.length !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => setShowSemana(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            {eventosSemana.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">Nenhum evento esta semana.</p> : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {eventosSemana.map(ev => (
+                  <li key={ev.id} onClick={() => { setShowSemana(false); abrirEvento(ev) }}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{ev.titulo}</p>
+                      {ev.descricao && <p className="text-xs text-gray-400 truncate">{ev.descricao}</p>}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs text-gray-500">{new Date(ev.data_inicio).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}</p>
+                      <p className="text-xs text-gray-400">{ev.dia_inteiro ? 'Dia inteiro' : new Date(ev.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 pt-4 border-t"><button onClick={() => { setShowSemana(false); navigate('/agenda?view=semana') }} className="w-full text-sm text-brand-600 hover:underline">Ver na agenda →</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal pendências comigo */}
+      {showPendComigo && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowPendComigo(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><AlertCircle size={16} className="text-orange-500" /> Pendências comigo</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{pendComigo.length} pendência{pendComigo.length !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => setShowPendComigo(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            {pendComigo.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">Nenhuma pendência.</p> : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {pendComigo.map(p => (
+                  <li key={p.id} onClick={() => { setShowPendComigo(false); setPendModalId(p.id) }}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{p.titulo}</p>
+                      <p className="text-xs text-gray-400">De: {(p.de_usuario as any)?.nome?.split(' ')[0]}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.prioridade === 'alta' ? 'bg-red-100 text-red-700' : p.prioridade === 'media' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {p.prioridade === 'alta' ? 'Alta' : p.prioridade === 'media' ? 'Média' : 'Baixa'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 pt-4 border-t"><button onClick={() => { setShowPendComigo(false); navigate('/pendencias') }} className="w-full text-sm text-brand-600 hover:underline">Ver todas →</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal minhas pendências */}
+      {showMinhasPend && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowMinhasPend(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2"><Send size={16} className="text-purple-500" /> Minhas pendências</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{minhasPend.length} pendência{minhasPend.length !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => setShowMinhasPend(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            {minhasPend.length === 0 ? <p className="text-sm text-gray-400 text-center py-8">Nenhuma pendência.</p> : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {minhasPend.map(p => (
+                  <li key={p.id} onClick={() => { setShowMinhasPend(false); setPendModalId(p.id) }}
+                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">{p.titulo}</p>
+                      <p className="text-xs text-gray-400">Para: {(p.para_usuario as any)?.nome?.split(' ')[0]}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${p.status === 'solucao_apresentada' ? 'bg-purple-100 text-purple-700' : p.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {p.status === 'solucao_apresentada' ? 'Solução' : p.status === 'em_andamento' ? 'Andamento' : 'Aberta'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="mt-4 pt-4 border-t"><button onClick={() => { setShowMinhasPend(false); navigate('/pendencias?aba=minhas') }} className="w-full text-sm text-brand-600 hover:underline">Ver todas →</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal eventos atrasados */}
+      {showAtrasados && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowAtrasados(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Clock size={16} className="text-red-500" /> Eventos atrasados
                 </h3>
+                <p className="text-xs text-gray-400 mt-0.5">{eventosAtrasados.length} evento{eventosAtrasados.length !== 1 ? 's' : ''} não concluído{eventosAtrasados.length !== 1 ? 's' : ''}</p>
               </div>
-              <button onClick={() => setEventoAtivo(null)} className="text-gray-400 hover:text-gray-600 ml-2 shrink-0">
-                <X size={18} />
-              </button>
+              <button onClick={() => setShowAtrasados(false)}><X size={18} className="text-gray-400" /></button>
             </div>
-
-            <div className="space-y-2 mb-5">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Clock size={14} className="text-gray-400" />
-                {eventoAtivo.dia_inteiro
-                  ? 'Dia inteiro'
-                  : new Date(eventoAtivo.data_inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                    + (eventoAtivo.data_fim ? ' – ' + new Date(eventoAtivo.data_fim).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '')
-                }
-              </div>
-              {eventoAtivo.descricao && (
-                <div className="flex items-start gap-2 text-sm text-gray-600">
-                  <MapPin size={14} className="text-gray-400 mt-0.5 shrink-0" />
-                  <span>{eventoAtivo.descricao}</span>
-                </div>
-              )}
-              {eventoAtivo.concluido && (
-                <div className="flex items-center gap-2 text-sm text-green-600">
-                  <CheckCircle2 size={14} /> Concluído
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <button onClick={() => toggleConcluido(eventoAtivo)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${eventoAtivo.concluido ? 'border-gray-300 text-gray-600 hover:bg-gray-50' : 'border-green-300 text-green-700 bg-green-50 hover:bg-green-100'}`}>
-                <CheckCircle2 size={15} />
-                {eventoAtivo.concluido ? 'Desmarcar' : 'Concluir'}
-              </button>
-              <button onClick={() => { setEventoAtivo(null); navigate('/agenda') }}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
-                <Calendar size={15} /> Ver na agenda
+            {eventosAtrasados.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">Nenhum evento atrasado.</p>
+            ) : (
+              <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
+                {eventosAtrasados.map(ev => {
+                  const inicio = new Date(ev.data_inicio)
+                  const fim = ev.data_fim ? new Date(ev.data_fim) : null
+                  const diasAtrasado = Math.floor((Date.now() - (fim ?? inicio).getTime()) / 86400000)
+                  return (
+                    <li key={ev.id}
+                      onClick={() => { setShowAtrasados(false); abrirEvento(ev) }}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-red-100 bg-red-50 hover:bg-red-100 cursor-pointer transition-colors">
+                      <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: ev.cor }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{ev.titulo}</p>
+                        <p className="text-xs text-gray-500">
+                          {inicio.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          {' '}{inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          {fim && ` – ${fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-red-600 shrink-0">
+                        {diasAtrasado === 0 ? 'hoje' : `${diasAtrasado}d atrás`}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            <div className="mt-4 pt-4 border-t">
+              <button onClick={() => { setShowAtrasados(false); navigate('/agenda') }}
+                className="w-full text-sm text-brand-600 hover:underline">
+                Ver na agenda →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal detalhe da pendência */}
-      {pendenciaAtiva && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setPendenciaAtiva(null); setShowSolucao(false) }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1 min-w-0 pr-2">
-                <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full mb-2 inline-block">Alta prioridade</span>
-                <h3 className="font-semibold text-gray-900 text-base leading-tight">{pendenciaAtiva.titulo}</h3>
-              </div>
-              <button onClick={() => { setPendenciaAtiva(null); setShowSolucao(false) }} className="text-gray-400 hover:text-gray-600 shrink-0">
-                <X size={18} />
-              </button>
-            </div>
 
-            <div className="space-y-2 mb-4">
-              {pendenciaAtiva.descricao && <p className="text-sm text-gray-600">{pendenciaAtiva.descricao}</p>}
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">De: {(pendenciaAtiva.de_usuario as any)?.nome?.split(' ')[0]}</span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">Para: {(pendenciaAtiva.para_usuario as any)?.nome?.split(' ')[0]}</span>
-                <span className={`px-2 py-1 rounded-full font-medium ${pendenciaAtiva.status === 'aberta' ? 'bg-orange-100 text-orange-700' : pendenciaAtiva.status === 'em_andamento' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                  {pendenciaAtiva.status === 'aberta' ? 'A resolver' : pendenciaAtiva.status === 'em_andamento' ? 'Em andamento' : 'Solução apresentada'}
-                </span>
-              </div>
-              {pendenciaAtiva.prazo && <p className="text-xs text-gray-400">Prazo: {new Date(pendenciaAtiva.prazo).toLocaleDateString('pt-BR')}</p>}
-              {pendenciaAtiva.solucao && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <p className="text-xs font-semibold text-purple-700 mb-1">Solução</p>
-                  <p className="text-sm text-purple-900">{pendenciaAtiva.solucao}</p>
-                </div>
-              )}
-              {showSolucao && (
-                <div className="space-y-2">
-                  <textarea className="w-full text-sm border border-purple-300 rounded-lg p-2 resize-none focus:outline-none focus:border-purple-500 min-h-[80px]"
-                    placeholder="Descreva a solução..." value={solucaoInput} onChange={e => setSolucaoInput(e.target.value)} autoFocus />
-                  <div className="flex gap-2">
-                    <button onClick={() => setShowSolucao(false)} className="btn-secondary text-xs py-1.5 flex-1">Cancelar</button>
-                    <button onClick={salvarSolucaoDash} className="text-xs py-1.5 flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium">Salvar</button>
-                  </div>
-                </div>
-              )}
-            </div>
+      {pendModalId && (
+        <PendenciaDetalheModal
+          pendenciaId={pendModalId}
+          onClose={() => setPendModalId(null)}
+          onEditar={() => navigate(`/pendencias?abrir=${pendModalId}`)}
+          onChanged={load}
+        />
+      )}
 
-            <div className="flex flex-wrap gap-2 border-t pt-4">
-              {!showSolucao && pendenciaAtiva.status !== 'solucao_apresentada' && (
-                <button onClick={() => { setShowSolucao(true); setSolucaoInput('') }}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 hover:bg-purple-50">
-                  Apresentar solução
-                </button>
-              )}
-              {pendenciaAtiva.status !== 'em_andamento' && (
-                <button onClick={() => mudarStatusPendencia('em_andamento')}
-                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
-                  → Em andamento
-                </button>
-              )}
-              <button onClick={() => mudarStatusPendencia('resolvida')}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-green-300 text-green-700 hover:bg-green-50">
-                → Resolvida
-              </button>
-              <button onClick={() => { setPendenciaAtiva(null); navigate(`/pendencias?abrir=${pendenciaAtiva.id}`) }}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50">
-                <Pencil size={12} /> Editar
-              </button>
-              <button onClick={criarEventoPendencia}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-brand-300 text-brand-700 hover:bg-brand-50">
-                <CalendarPlus size={12} /> Criar evento
-              </button>
-              <button onClick={deletarPendencia}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 ml-auto">
-                <Trash2 size={12} /> Deletar
-              </button>
-            </div>
-          </div>
-        </div>
+      {showNovaPendencia && (
+        <NovaPendenciaModal onClose={() => setShowNovaPendencia(false)} onCreated={load} />
+      )}
+      {showNovoEvento && (
+        <NovoEventoModal onClose={() => setShowNovoEvento(false)} onCreated={load} />
+      )}
+      {eventoModalId && (
+        <EventoDetalheModal eventoId={eventoModalId} onClose={() => setEventoModalId(null)} onChanged={load} />
       )}
     </div>
   )

@@ -36,6 +36,7 @@ export type Evento = {
   categoria_id: string | null
   recorrencia_grupo: string | null
   lembrete_minutos: number
+  lembretes_minutos: number[]
   criado_por: string
   google_event_id: string | null
   created_at: string
@@ -88,6 +89,39 @@ export type Pendencia = {
   pendencia_tarefas?: PendenciaTarefa[]
 }
 
+export type PendenciaComentario = {
+  id: string
+  pendencia_id: string
+  autor_id: string
+  mensagem: string
+  imagem_url?: string | null
+  created_at: string
+  autor?: Profile
+}
+
+export type PendenciaLeitura = {
+  pendencia_id: string
+  usuario_id: string
+  lido_em: string
+}
+
+export type Notificacao = {
+  id: string
+  usuario_id: string
+  tipo: string
+  titulo: string
+  mensagem: string | null
+  link: string | null
+  lida: boolean
+  created_at: string
+}
+
+export async function criarNotificacoes(rows: { usuario_id: string; tipo: string; titulo: string; mensagem?: string | null; link?: string | null }[]) {
+  const unicos = rows.filter((r, i) => r.usuario_id && rows.findIndex(x => x.usuario_id === r.usuario_id) === i)
+  if (unicos.length === 0) return
+  await supabase.from('notificacoes').insert(unicos)
+}
+
 export type ReuniaPasta = {
   id: string
   nome: string
@@ -111,7 +145,44 @@ export type Reuniao = {
   created_at: string
   updated_at: string
   pasta?: ReuniaPasta
+  dados_importados?: DadosImportados[] | null
+  pauta_topicos?: PautaTopico[] | null
+  google_event_id?: string | null
 }
+
+export type PautaTopico = {
+  id: string
+  titulo: string
+  duracao: string
+  descricao: string
+}
+
+export type DadosImportadosMetas = {
+  id: string
+  tipo: 'metas'
+  titulo: string
+  criado_em: string
+  mesTitulo: string
+  blocos: {
+    label: string
+    lojas: { nome: string; gerente: string | null; meta: number; realizado: number | null }[]
+    totalMeta: number
+    totalRealizado: number
+  }[]
+}
+export type DadosImportadosHistorico = {
+  id: string
+  tipo: 'historico'
+  titulo: string
+  criado_em: string
+  ano: number
+  mesLabel: string
+  lojas: { nome: string; valor: number; var1: number | null; var2: number | null }[]
+  totalRede: number
+  totalVar1: number | null
+  totalVar2: number | null
+}
+export type DadosImportados = DadosImportadosMetas | DadosImportadosHistorico
 
 export type PendenciaTarefa = {
   id: string
