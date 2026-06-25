@@ -100,6 +100,7 @@ export default function Financeiro() {
   const [fechado, setFechado] = useState<{ fechado_em: string } | null>(null)
   const [lancamentosSalvos, setLancamentosSalvos] = useState<Lancamento[]>([])
   const [previa, setPrevia] = useState<Lancamento[] | null>(null)
+  const [ordenacao, setOrdenacao] = useState<{ campo: keyof Lancamento; asc: boolean } | null>(null)
   const [sincronizando, setSincronizando] = useState(false)
   const sincronizandoRef = useRef(false)
   const [fechando, setFechando] = useState(false)
@@ -673,6 +674,41 @@ export default function Financeiro() {
 
   const listaExibida = fechado ? lancamentosSalvos : previa
   const total = listaExibida?.filter(l => !l.redirecionado_para).reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0) ?? 0
+
+  function alternarOrdenacao(campo: keyof Lancamento) {
+    setOrdenacao(prev => prev?.campo === campo ? { campo, asc: !prev.asc } : { campo, asc: true })
+  }
+
+  function thOrdenavel(campo: keyof Lancamento, label: string, alinhar: 'left' | 'right' = 'left') {
+    const ativo = ordenacao?.campo === campo
+    return (
+      <th className={`p-2 ${alinhar === 'right' ? 'text-right' : 'text-left'}`}>
+        <button onClick={() => alternarOrdenacao(campo)}
+          className={`flex items-center gap-1 hover:text-gray-900 transition-colors ${alinhar === 'right' ? 'ml-auto' : ''} ${ativo ? 'text-gray-900 font-semibold' : ''}`}>
+          {label}
+          <ChevronDown size={11} className={`transition-transform shrink-0 ${ativo && !ordenacao!.asc ? 'rotate-180' : ''} ${ativo ? 'opacity-100' : 'opacity-30'}`} />
+        </button>
+      </th>
+    )
+  }
+
+  // Lista usada só na tabela em tela — as outras contas (total, pagamentos por conta, CP etc.)
+  // continuam usando listaExibida na ordem original, pra não depender de como o usuário ordenou a tela.
+  const listaExibidaOrdenada = (() => {
+    if (!ordenacao || !listaExibida) return listaExibida
+    const { campo, asc } = ordenacao
+    const copia = [...listaExibida]
+    copia.sort((a, b) => {
+      const va = a[campo] as any
+      const vb = b[campo] as any
+      if (va == null && vb == null) return 0
+      if (va == null) return asc ? -1 : 1
+      if (vb == null) return asc ? 1 : -1
+      if (typeof va === 'number' && typeof vb === 'number') return asc ? va - vb : vb - va
+      return asc ? String(va).localeCompare(String(vb), 'pt-BR') : String(vb).localeCompare(String(va), 'pt-BR')
+    })
+    return copia
+  })()
 
   function pagamentosPorConta(conta: string) {
     return (listaExibida ?? []).filter(l => l.pagar_em === conta && !l.redirecionado_para).reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0)
@@ -1427,19 +1463,19 @@ export default function Financeiro() {
                 <div className="overflow-x-auto bg-white">
                   <table className="min-w-full text-xs">
                     <thead><tr className="bg-gray-100 text-gray-600">
-                      <th className="text-left p-2">Loja</th>
-                      <th className="text-left p-2">Data venc.</th>
-                      <th className="text-left p-2">Empresa</th>
-                      <th className="text-left p-2">Fatura</th>
-                      <th className="text-right p-2">Valor</th>
-                      <th className="text-right p-2">Juros</th>
-                      <th className="text-left p-2">Tipo</th>
-                      <th className="text-left p-2">Pagar em</th>
+                      {thOrdenavel('empresa', 'Loja')}
+                      {thOrdenavel('vencimento', 'Data venc.')}
+                      {thOrdenavel('fornecedor', 'Empresa')}
+                      {thOrdenavel('nota', 'Fatura')}
+                      {thOrdenavel('valor', 'Valor', 'right')}
+                      {thOrdenavel('juros', 'Juros', 'right')}
+                      {thOrdenavel('tipo', 'Tipo')}
+                      {thOrdenavel('pagar_em', 'Pagar em')}
                       <th className="text-center p-2">✓</th>
                       <th className="text-center p-2"></th>
                     </tr></thead>
                     <tbody>
-                      {listaExibida.map((l, i) => (
+                      {(listaExibidaOrdenada ?? []).map((l, i) => (
                         <tr key={l.id ?? i} className={`border-t border-gray-100 ${l.redirecionado_para ? 'bg-gray-50 text-gray-400' : l.pago ? 'bg-green-50' : i % 2 === 0 ? 'bg-emerald-50/40' : 'bg-white'}`}>
                           <td className={`p-2 whitespace-nowrap font-medium ${l.redirecionado_para ? 'line-through' : ''}`} title={l.descricao ?? ''}>{l.empresa}</td>
                           <td className={`p-2 whitespace-nowrap ${l.redirecionado_para ? 'line-through' : ''}`}>
