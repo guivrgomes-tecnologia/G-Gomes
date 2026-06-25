@@ -81,33 +81,54 @@ async function sincronizarLancamentosInterno(userId: string, arquivoUrl: string)
   }
 
   const dias = Array.from(porDia.keys())
-  const { data: existentes } = dias.length > 0
-    ? await supabase.from('financeiro_lancamentos').select('*').in('dia', dias)
-    : { data: [] as any[] }
-  const diasFechados = new Set((existentes ?? []).filter(r => r.fechado).map(r => r.dia))
   // Identidade do lançamento: empresa + fornecedor + nota + vencimento. NUNCA usa valor aqui,
   // porque o valor da planilha é ajustado com frequência (descontos, juros, etc.) e não pode
   // ser usado pra reconhecer "é o mesmo lançamento de antes" — senão duplica a cada ajuste.
-  const chaveLinha = (l: any) => `${l.empresa ?? ''}|${l.fornecedor ?? ''}|${l.nota ?? ''}|${l.vencimento ?? ''}`
+  // Aparam espaços extras (ex.: "COFINS " com espaço no final) pra não tratar como lançamento diferente.
+  const norm = (v: unknown) => String(v ?? '').trim()
+  const chaveLinha = (l: any) => `${norm(l.empresa)}|${norm(l.fornecedor)}|${norm(l.nota)}|${norm(l.vencimento)}`
 
-  await Promise.all(dias.filter(dia => !diasFechados.has(dia)).map(async dia => {
-    const existentesDoDia = (existentes ?? []).filter(r => r.dia === dia && !r.importado_de_id)
+  await Promise.all(dias.map(async dia => {
+    // Busca os lançamentos existentes DESSE DIA especificamente, em vez de uma consulta gigante
+    // com todos os dias da planilha de uma vez (que passava do limite de linhas do Supabase e
+    // silenciosamente deixava de encontrar lançamentos já salvos — fazendo o sync "não atualizar nada").
+    const { data: existentesDoDiaTodos } = await supabase.from('financeiro_lancamentos').select('*').eq('dia', dia)
+    const diaTemAlgumFechado = (existentesDoDiaTodos ?? []).some(r => r.fechado)
+    const existentesDoDia = (existentesDoDiaTodos ?? []).filter(r => !r.importado_de_id)
     const existentesPorChave = new Map(existentesDoDia.map(r => [chaveLinha(r), r]))
     const usados = new Set<string>()
     const novos: any[] = []
     const atualizacoes: any[] = []
 
-    for (const l of porDia.get(dia)!) {
+    // Se duas linhas da planilha caírem na mesma identidade (ex.: "Fatura" genérica como "PA",
+    // reaproveitada em vários lançamentos), mantém só a última lida — evita duas atualizações
+    // concorrentes na mesma linha do banco com valores diferentes (corrida que descartava a correção).
+    const linhasUnicasPorChave = new Map<string, any>()
+    for (const l of porDia.get(dia)!) linhasUnicasPorChave.set(chaveLinha(l), l)
+
+    for (const l of linhasUnicasPorChave.values()) {
+      const lLimpo = { ...l, empresa: norm(l.empresa), fornecedor: norm(l.fornecedor), nota: norm(l.nota), tipo: norm(l.tipo) }
       const chave = chaveLinha(l)
       const existente = existentesPorChave.get(chave)
       if (existente) {
         usados.add(chave)
-        atualizacoes.push(supabase.from('financeiro_lancamentos').update({
-          data_dig: l.data_dig, descricao: l.descricao, pagamento: l.pagamento, tipo: l.tipo, observacao: l.observacao,
-          valor: l.valor, valor_planilha: l.valor, linha_planilha: l.linha_planilha,
-        }).eq('id', existente.id))
-      } else {
-        novos.push({ ...l, dia, usuario_id: userId, fechado: false, valor_planilha: l.valor })
+        if (existente.fechado) {
+          // Essa linha específica já foi fechada (ex.: importada de um dia que já foi fechado) —
+          // não muda valor pra não bagunçar o que já foi fechado, só a data de pagamento (informativa).
+          if (lLimpo.pagamento && existente.pagamento !== lLimpo.pagamento) {
+            atualizacoes.push(supabase.from('financeiro_lancamentos').update({ pagamento: lLimpo.pagamento }).eq('id', existente.id))
+          }
+        } else {
+          atualizacoes.push(supabase.from('financeiro_lancamentos').update({
+            data_dig: lLimpo.data_dig, descricao: lLimpo.descricao, pagamento: lLimpo.pagamento, tipo: lLimpo.tipo, observacao: lLimpo.observacao,
+            empresa: lLimpo.empresa, fornecedor: lLimpo.fornecedor, nota: lLimpo.nota,
+            valor: lLimpo.valor, valor_planilha: lLimpo.valor, linha_planilha: lLimpo.linha_planilha,
+          }).eq('id', existente.id))
+        }
+      } else if (!diaTemAlgumFechado) {
+        // Só insere lançamento novo se o dia não tiver nada fechado ainda — um dia com algo já
+        // fechado não deve ganhar novidades por trás, pra não bagunçar o que já foi decidido.
+        novos.push({ ...lLimpo, dia, usuario_id: userId, fechado: false, valor_planilha: lLimpo.valor })
       }
     }
 
@@ -123,25 +144,12 @@ async function sincronizarLancamentosInterno(userId: string, arquivoUrl: string)
       }))
     }
 
-    const sobrando = existentesDoDia.filter(r => !usados.has(chaveLinha(r)) && !r.redirecionado_para && !r.origem_manual)
-    if (sobrando.length > 0) {
-      await supabase.from('financeiro_lancamentos').delete().in('id', sobrando.map((r: any) => r.id))
-    }
-  }))
-
-  // Dias já fechados não recebem novos lançamentos nem mudança de valor (pra não bagunçar o que já foi fechado),
-  // mas a data de pagamento é só informativa — então ela continua atualizando mesmo depois do dia fechado.
-  await Promise.all(dias.filter(dia => diasFechados.has(dia)).map(async dia => {
-    const existentesDoDia = (existentes ?? []).filter(r => r.dia === dia && !r.importado_de_id)
-    const existentesPorChave = new Map(existentesDoDia.map(r => [chaveLinha(r), r]))
-    const atualizacoes: any[] = []
-    for (const l of porDia.get(dia)!) {
-      const existente = existentesPorChave.get(chaveLinha(l))
-      if (existente && l.pagamento && existente.pagamento !== l.pagamento) {
-        atualizacoes.push(supabase.from('financeiro_lancamentos').update({ pagamento: l.pagamento }).eq('id', existente.id))
+    if (!diaTemAlgumFechado) {
+      const sobrando = existentesDoDia.filter(r => !usados.has(chaveLinha(r)) && !r.redirecionado_para && !r.origem_manual)
+      if (sobrando.length > 0) {
+        await supabase.from('financeiro_lancamentos').delete().in('id', sobrando.map((r: any) => r.id))
       }
     }
-    await Promise.all(atualizacoes)
   }))
 
   return {}

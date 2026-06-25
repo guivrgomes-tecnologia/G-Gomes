@@ -302,6 +302,26 @@ export default function Financeiro() {
     }
   }
 
+  function atualizarLinhaCartao(loja: string, campo: 'vendaCartao' | 'recebidoRede' | 'taxaRede', valorStr: string, salvar: boolean) {
+    const valor = parseValorBR(valorStr)
+    const atualizar = (lista: LinhaConferencia[]) => lista.map(l => {
+      if (l.loja !== loja) return l
+      const atualizada = { ...l, [campo]: valor }
+      atualizada.diferenca = (atualizada.recebidoRede + atualizada.taxaRede) - atualizada.vendaCartao
+      return atualizada
+    })
+    if (salvar && conferenciaSalva) {
+      const novaLista = atualizar(conferenciaSalva)
+      setConferenciaSalva(novaLista)
+      const linha = novaLista.find(l => l.loja === loja)!
+      supabase.from('financeiro_conferencia_cartao').update({
+        venda_cartao: linha.vendaCartao, recebido_rede: linha.recebidoRede, taxa_rede: linha.taxaRede, diferenca: linha.diferenca,
+      }).eq('dia', diaSelecionado).eq('loja', loja)
+    } else if (conferenciaPreviaCalc) {
+      setConferenciaPreviaCalc(atualizar(conferenciaPreviaCalc))
+    }
+  }
+
   function atualizarContaDeposito(loja: string, contaDeposito: string, salvar: boolean) {
     const atualizar = (lista: LinhaDinheiroEditavel[]) => lista.map(l => l.loja === loja ? { ...l, contaDeposito } : l)
     if (salvar && dinheiroSalvo) {
@@ -313,33 +333,38 @@ export default function Financeiro() {
     }
   }
 
-  async function fecharConferencia() {
-    if (!conferenciaPreviaCalc || !dinheiroPreviaCalc) return
-    await Promise.all([
-      supabase.from('financeiro_conferencia_cartao').delete().eq('dia', diaSelecionado),
-      supabase.from('financeiro_conferencia_dinheiro').delete().eq('dia', diaSelecionado),
-    ])
-    await Promise.all([
-      supabase.from('financeiro_conferencia_cartao').insert(
-        conferenciaPreviaCalc.map(l => ({
-          dia: diaSelecionado, loja: l.loja,
-          venda_cartao: l.vendaCartao, recebido_rede: l.recebidoRede, taxa_rede: l.taxaRede, diferenca: l.diferenca,
-          usuario_id: user!.id,
-        }))
-      ),
-      supabase.from('financeiro_conferencia_dinheiro').insert(
-        dinheiroPreviaCalc.map(l => ({
+  async function fecharConferenciaCartao() {
+    // Sempre regrava a lista inteira a partir do que está na tela agora (conferenciaSalva, se já existir
+    // e estiver sendo editada de novo, ou conferenciaPreviaCalc na primeira vez). Isso evita perder edições
+    // recentes que ainda não tinham sido confirmadas no banco quando o botão de fechar foi clicado.
+    const linhasCartao = conferenciaSalva ?? conferenciaPreviaCalc
+    if (!linhasCartao) return
+    await supabase.from('financeiro_conferencia_cartao').delete().eq('dia', diaSelecionado)
+    await supabase.from('financeiro_conferencia_cartao').insert(
+      linhasCartao.map(l => ({
+        dia: diaSelecionado, loja: l.loja,
+        venda_cartao: l.vendaCartao, recebido_rede: l.recebidoRede, taxa_rede: l.taxaRede, diferenca: l.diferenca,
+        usuario_id: user!.id,
+      }))
+    )
+    // O dinheiro pode continuar em aberto (os valores vão sendo recebidos aos poucos),
+    // mas já salva o que tiver preenchido até agora pra não perder o trabalho.
+    const linhasDinheiro = dinheiroSalvo ?? dinheiroPreviaCalc
+    if (linhasDinheiro) {
+      await supabase.from('financeiro_conferencia_dinheiro').delete().eq('dia', diaSelecionado)
+      await supabase.from('financeiro_conferencia_dinheiro').insert(
+        linhasDinheiro.map(l => ({
           dia: diaSelecionado, loja: l.loja,
           venda_dinheiro: l.vendaDinheiro, fechamento_caixa: l.fechamentoCaixa, diferenca: l.diferenca, deposito: l.deposito, conta_deposito: l.contaDeposito,
           usuario_id: user!.id,
         }))
-      ),
-    ])
+      )
+    }
     await supabase.from('financeiro_saldos').upsert(
-      { dia: diaSelecionado, campo: 'CONFERENCIAS_FECHADAS', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
+      { dia: diaSelecionado, campo: 'CONFERENCIA_CARTAO_FECHADA', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
       { onConflict: 'dia,campo' }
     )
-    setSaldos(prev => ({ ...prev, CONFERENCIAS_FECHADAS: 1 }))
+    setSaldos(prev => ({ ...prev, CONFERENCIA_CARTAO_FECHADA: 1 }))
     setArquivoSistema(null)
     setArquivoRede(null)
     setConferenciaPreviaCalc(null)
@@ -347,18 +372,45 @@ export default function Financeiro() {
     await carregarConferencia()
   }
 
-  async function reabrirConferencia() {
-    if (!confirm('Reabrir todas as conferências desse dia (cartão, dinheiro, notas, despesas e erros)? Os valores salvos serão apagados.')) return
-    await Promise.all([
-      supabase.from('financeiro_conferencia_cartao').delete().eq('dia', diaSelecionado),
-      supabase.from('financeiro_conferencia_dinheiro').delete().eq('dia', diaSelecionado),
-    ])
+  async function fecharConferenciaDinheiro() {
+    // Mesma lógica do cartão: regrava a partir do estado atual da tela, não confia que
+    // edições feitas há poucos segundos já tenham sido confirmadas no banco.
+    const linhasDinheiro = dinheiroSalvo ?? dinheiroPreviaCalc
+    if (linhasDinheiro) {
+      await supabase.from('financeiro_conferencia_dinheiro').delete().eq('dia', diaSelecionado)
+      await supabase.from('financeiro_conferencia_dinheiro').insert(
+        linhasDinheiro.map(l => ({
+          dia: diaSelecionado, loja: l.loja,
+          venda_dinheiro: l.vendaDinheiro, fechamento_caixa: l.fechamentoCaixa, diferenca: l.diferenca, deposito: l.deposito, conta_deposito: l.contaDeposito,
+          usuario_id: user!.id,
+        }))
+      )
+    }
     await supabase.from('financeiro_saldos').upsert(
-      { dia: diaSelecionado, campo: 'CONFERENCIAS_FECHADAS', valor: 0, usuario_id: user!.id, updated_at: new Date().toISOString() },
+      { dia: diaSelecionado, campo: 'CONFERENCIA_DINHEIRO_FECHADA', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
       { onConflict: 'dia,campo' }
     )
-    setSaldos(prev => ({ ...prev, CONFERENCIAS_FECHADAS: 0 }))
+    setSaldos(prev => ({ ...prev, CONFERENCIA_DINHEIRO_FECHADA: 1 }))
+    setDinheiroPreviaCalc(null)
     await carregarConferencia()
+  }
+
+  async function reabrirConferenciaCartao() {
+    // Só libera a edição — os valores salvos continuam lá, não apaga nada.
+    await supabase.from('financeiro_saldos').upsert(
+      { dia: diaSelecionado, campo: 'CONFERENCIA_CARTAO_FECHADA', valor: 0, usuario_id: user!.id, updated_at: new Date().toISOString() },
+      { onConflict: 'dia,campo' }
+    )
+    setSaldos(prev => ({ ...prev, CONFERENCIA_CARTAO_FECHADA: 0 }))
+  }
+
+  async function reabrirConferenciaDinheiro() {
+    // Só libera a edição — os valores salvos continuam lá, não apaga nada.
+    await supabase.from('financeiro_saldos').upsert(
+      { dia: diaSelecionado, campo: 'CONFERENCIA_DINHEIRO_FECHADA', valor: 0, usuario_id: user!.id, updated_at: new Date().toISOString() },
+      { onConflict: 'dia,campo' }
+    )
+    setSaldos(prev => ({ ...prev, CONFERENCIA_DINHEIRO_FECHADA: 0 }))
   }
 
   async function carregarSaldos() {
@@ -379,7 +431,11 @@ export default function Financeiro() {
   }
 
   const saldoInicialFechado = (saldos['SALDO_INICIAL_FECHADO'] ?? 0) === 1
-  const conferenciasFechadas = (saldos['CONFERENCIAS_FECHADAS'] ?? 0) === 1
+  // Compatibilidade com dias antigos que usavam uma única trava combinada: se ela estiver marcada,
+  // tratamos as duas conferências como fechadas mesmo sem a trava nova específica.
+  const conferenciaCartaoFechada = (saldos['CONFERENCIA_CARTAO_FECHADA'] ?? saldos['CONFERENCIAS_FECHADAS'] ?? 0) === 1
+  const conferenciaDinheiroFechada = (saldos['CONFERENCIA_DINHEIRO_FECHADA'] ?? saldos['CONFERENCIAS_FECHADAS'] ?? 0) === 1
+  const conferenciasAmbasFechadas = conferenciaCartaoFechada && conferenciaDinheiroFechada
 
   async function fecharSaldoInicial() {
     await supabase.from('financeiro_saldos').upsert(
@@ -986,9 +1042,27 @@ export default function Financeiro() {
                       {linhasComNota.map(l => (
                         <tr key={l.loja} className="border-t border-blue-100 bg-blue-50/60">
                           <td className="p-2 whitespace-nowrap font-medium">{l.loja}</td>
-                          <td className="p-2 text-right whitespace-nowrap">{fmt(l.vendaCartao)}</td>
-                          <td className="p-2 text-right whitespace-nowrap">{fmt(l.recebidoRede)}</td>
-                          <td className="p-2 text-right whitespace-nowrap">{fmt(l.taxaRede)}</td>
+                          <td className="p-2 text-right whitespace-nowrap">
+                            <input type="text" inputMode="decimal" disabled={conferenciaCartaoFechada} defaultValue={l.vendaCartao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              key={`${l.loja}-vendaCartao-${l.vendaCartao}`}
+                              className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-transparent disabled:border-transparent disabled:text-gray-700"
+                              onBlur={e => atualizarLinhaCartao(l.loja, 'vendaCartao', e.target.value, !!conferenciaSalva)}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+                          </td>
+                          <td className="p-2 text-right whitespace-nowrap">
+                            <input type="text" inputMode="decimal" disabled={conferenciaCartaoFechada} defaultValue={l.recebidoRede.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              key={`${l.loja}-recebidoRede-${l.recebidoRede}`}
+                              className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-transparent disabled:border-transparent disabled:text-gray-700"
+                              onBlur={e => atualizarLinhaCartao(l.loja, 'recebidoRede', e.target.value, !!conferenciaSalva)}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+                          </td>
+                          <td className="p-2 text-right whitespace-nowrap">
+                            <input type="text" inputMode="decimal" disabled={conferenciaCartaoFechada} defaultValue={l.taxaRede.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              key={`${l.loja}-taxaRede-${l.taxaRede}`}
+                              className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-transparent disabled:border-transparent disabled:text-gray-700"
+                              onBlur={e => atualizarLinhaCartao(l.loja, 'taxaRede', e.target.value, !!conferenciaSalva)}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+                          </td>
                           <td className="p-2 text-right whitespace-nowrap text-gray-500">{fmt(notasPorLoja(l.loja).cartao)}</td>
                           <td className={`p-2 text-right whitespace-nowrap font-medium ${Math.abs(l.diferencaFinal) > 0.5 ? 'text-red-600' : 'text-gray-700'}`}>{fmt(l.diferencaFinal)}</td>
                         </tr>
@@ -1003,6 +1077,25 @@ export default function Financeiro() {
                       </tr>
                     </tbody>
                   </table>
+                  <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-2.5 border-t border-blue-200 bg-white">
+                    {conferenciaCartaoFechada ? (
+                      <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Cartão fechado
+                      </span>
+                    ) : conferenciaPreviaCalc ? (
+                      <button onClick={() => { setConferenciaPreviaCalc(null); setDinheiroPreviaCalc(null) }} className="btn-secondary text-xs">Recalcular</button>
+                    ) : <span />}
+                    <div className="flex gap-2">
+                      {conferenciaCartaoFechada && (
+                        <button onClick={reabrirConferenciaCartao} className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors whitespace-nowrap">
+                          Reabrir cartão
+                        </button>
+                      )}
+                      {!conferenciaCartaoFechada && conferenciaPreviaCalc && (
+                        <button onClick={fecharConferenciaCartao} className="btn-primary text-xs flex items-center gap-1.5"><Lock size={12} /> Fechar conferência do cartão</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )
             })()}
@@ -1037,21 +1130,21 @@ export default function Financeiro() {
                           <td className="p-2 whitespace-nowrap font-medium">{l.loja}</td>
                           <td className="p-2 text-right whitespace-nowrap">{fmt(l.vendaDinheiro)}</td>
                           <td className="p-2 text-right whitespace-nowrap">
-                            <input type="text" inputMode="decimal" disabled={conferenciasFechadas} defaultValue={l.fechamentoCaixa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <input type="text" inputMode="decimal" disabled={conferenciaDinheiroFechada} defaultValue={l.fechamentoCaixa.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               key={`${l.loja}-${l.fechamentoCaixa}`}
                               className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-gray-100 disabled:text-gray-500"
                               onBlur={e => atualizarFechamentoCaixa(l.loja, e.target.value, !!dinheiroSalvo)}
                               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
                           </td>
                           <td className="p-2 text-right whitespace-nowrap">
-                            <input type="text" inputMode="decimal" disabled={conferenciasFechadas} defaultValue={l.deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <input type="text" inputMode="decimal" disabled={conferenciaDinheiroFechada} defaultValue={l.deposito.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               key={`${l.loja}-deposito-${l.deposito}`}
                               className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-gray-100 disabled:text-gray-500"
                               onBlur={e => atualizarDeposito(l.loja, e.target.value, !!dinheiroSalvo)}
                               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
                           </td>
                           <td className="p-2">
-                            <select disabled={conferenciasFechadas} className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white disabled:bg-gray-100 disabled:text-gray-500"
+                            <select disabled={conferenciaDinheiroFechada} className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white disabled:bg-gray-100 disabled:text-gray-500"
                               value={l.contaDeposito} onChange={e => atualizarContaDeposito(l.loja, e.target.value, !!dinheiroSalvo)}>
                               {CONTAS_DEPOSITO.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -1075,31 +1168,28 @@ export default function Financeiro() {
                       </tr>
                     </tbody>
                   </table>
+                  <div className="flex items-center justify-between flex-wrap gap-2 px-3 py-2.5 border-t border-emerald-200 bg-white">
+                    {conferenciaDinheiroFechada ? (
+                      <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-1">
+                        <CheckCircle2 size={12} /> Dinheiro fechado
+                      </span>
+                    ) : (
+                      <span className="text-xs text-emerald-700">Pode deixar em aberto e ir completando os valores conforme for recebendo.</span>
+                    )}
+                    <div className="flex gap-2">
+                      {conferenciaDinheiroFechada && (
+                        <button onClick={reabrirConferenciaDinheiro} className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors whitespace-nowrap">
+                          Reabrir dinheiro
+                        </button>
+                      )}
+                      {!conferenciaDinheiroFechada && (
+                        <button onClick={fecharConferenciaDinheiro} className="btn-primary text-xs flex items-center gap-1.5"><Lock size={12} /> Fechar conferência do dinheiro</button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )
             })()}
-          </div>
-
-          {/* Ação compartilhada: fecha cartão + dinheiro + notas + despesas + erros de uma vez */}
-          <div className="flex items-center justify-between flex-wrap gap-2 mb-6 px-1">
-            {conferenciaSalva ? (
-              <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-lg whitespace-nowrap flex items-center gap-1">
-                <CheckCircle2 size={12} /> Conferências fechadas
-              </span>
-            ) : <span />}
-            <div className="flex gap-2">
-              {conferenciaSalva && (
-                <button onClick={reabrirConferencia} className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-700 hover:bg-amber-50 transition-colors whitespace-nowrap">
-                  Reabrir conferências
-                </button>
-              )}
-              {!conferenciaSalva && (conferenciaPreviaCalc || dinheiroPreviaCalc) && (
-                <>
-                  <button onClick={() => { setConferenciaPreviaCalc(null); setDinheiroPreviaCalc(null) }} className="btn-secondary text-xs">Recalcular</button>
-                  <button onClick={fecharConferencia} className="btn-primary text-xs flex items-center gap-1.5"><Lock size={12} /> Fechar conferências (cartão + dinheiro)</button>
-                </>
-              )}
-            </div>
           </div>
 
           {/* Notas fiscais */}
@@ -1113,7 +1203,7 @@ export default function Financeiro() {
             {abrirNotas && (
             <div className="mt-3">
               <p className="text-xs text-purple-700 mb-2">Vendas fora do relatório de forma de pagamento.</p>
-              {!conferenciasFechadas && (
+              {!conferenciasAmbasFechadas && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novaNota.loja} onChange={e => setNovaNota(n => ({ ...n, loja: e.target.value }))}>
                     {LOJAS_CARTAO.map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
@@ -1133,7 +1223,7 @@ export default function Financeiro() {
                       <span className="font-medium flex-1">{n.loja}</span>
                       <span className="text-gray-600">{FORMAS_PAGAMENTO_NOTA.find(f => f.valor === n.forma_pagamento)?.label}</span>
                       <span className="font-medium w-24 text-right">{fmt(n.valor)}</span>
-                      {!conferenciasFechadas && (
+                      {!conferenciasAmbasFechadas && (
                         <button onClick={() => removerNotaFiscal(n.id)} className="text-gray-300 hover:text-red-500"><X size={13} /></button>
                       )}
                     </div>
@@ -1154,7 +1244,7 @@ export default function Financeiro() {
             </button>
             {abrirDespesas && (
             <div className="mt-3">
-              {!conferenciasFechadas && (
+              {!conferenciaDinheiroFechada && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novaDespesa.loja} onChange={e => setNovaDespesa(d => ({ ...d, loja: e.target.value }))}>
                     {LOJAS_CARTAO.map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
@@ -1173,7 +1263,7 @@ export default function Financeiro() {
                       <span className="font-medium w-44 truncate">{d.loja}</span>
                       <span className="text-gray-600 flex-1 truncate">{d.descricao}</span>
                       <span className="font-medium w-24 text-right">{fmt(d.valor)}</span>
-                      {!conferenciasFechadas && (
+                      {!conferenciaDinheiroFechada && (
                         <button onClick={() => removerDespesaLoja(d.id)} className="text-gray-300 hover:text-red-500"><X size={13} /></button>
                       )}
                     </div>
@@ -1194,7 +1284,7 @@ export default function Financeiro() {
             </button>
             {abrirErros && (
             <div className="mt-3">
-              {!conferenciasFechadas && (
+              {!conferenciaDinheiroFechada && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   <select className="input text-xs py-1.5 w-44" value={novoErro.loja} onChange={e => setNovoErro(n => ({ ...n, loja: e.target.value }))}>
                     {LOJAS_CARTAO.map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
@@ -1213,7 +1303,7 @@ export default function Financeiro() {
                       <span className="font-medium w-44 truncate">{e.loja}</span>
                       <span className="text-gray-600 flex-1 truncate">{e.operadora}</span>
                       <span className="font-medium w-24 text-right">{fmt(e.valor)}</span>
-                      {!conferenciasFechadas && (
+                      {!conferenciaDinheiroFechada && (
                         <button onClick={() => removerErroCaixa(e.id)} className="text-gray-300 hover:text-red-500"><X size={13} /></button>
                       )}
                     </div>

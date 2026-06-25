@@ -6,7 +6,7 @@ export const LOJAS_CARTAO = [
   { nome: '03 - ATERRADO 56', codloja: 3, estabelecimento: '102236062', contaDepositoPadrao: 'FAPS ITAU' },
   { nome: '04 - RETIRO', codloja: 4, estabelecimento: '102178364', contaDepositoPadrao: 'FAPS ITAU' },
   { nome: '05 - AMARAL P.', codloja: 5, estabelecimento: '102179069', contaDepositoPadrao: 'FAPS ITAU' },
-  { nome: '06 - VILA', codloja: 6, estabelecimento: '102183139', contaDepositoPadrao: 'FAPS ITAU' },
+  { nome: '06 - VILA', codloja: 6, estabelecimento: '102183139', contaDepositoPadrao: 'FAPS SICOOB' },
   { nome: '07 - ATERRADO 968', codloja: 7, estabelecimento: '102237220', contaDepositoPadrao: 'FAPS SICOOB' },
   { nome: '08 - FEITO DOCE 33', codloja: 8, estabelecimento: '102183155', contaDepositoPadrao: 'FAPS ITAU' },
 ]
