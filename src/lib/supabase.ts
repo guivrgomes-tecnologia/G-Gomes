@@ -102,6 +102,19 @@ export type PendenciaComentario = {
   autor?: Profile
 }
 
+export type PendenciaAnexo = {
+  id: string
+  pendencia_id: string
+  nome_arquivo: string
+  url: string
+  path: string
+  tipo: string | null
+  tamanho: number | null
+  criado_por: string
+  created_at: string
+  autor?: Profile
+}
+
 export type PendenciaLeitura = {
   pendencia_id: string
   usuario_id: string

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon, Reply } from 'lucide-react'
-import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentario, PendenciaLeitura, criarNotificacoes } from '../lib/supabase'
+import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon, Reply, Paperclip, FileText, Download } from 'lucide-react'
+import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentario, PendenciaLeitura, PendenciaAnexo, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { uploadImagemChat } from '../lib/chatHelpers'
+import { uploadAnexoPendencia, deletarAnexoPendencia, formatTamanhoArquivo } from '../lib/anexoHelpers'
 
 export const STATUS_LABELS: Record<Pendencia['status'], string> = {
   aberta: 'A resolver',
@@ -43,6 +44,9 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   const { user, profile } = useAuth()
   const [pend, setPend] = useState<Pendencia | null>(null)
   const [tarefas, setTarefas] = useState<PendenciaTarefa[]>([])
+  const [anexos, setAnexos] = useState<PendenciaAnexo[]>([])
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false)
+  const inputAnexoRef = useRef<HTMLInputElement>(null)
   const [comentarios, setComentarios] = useState<PendenciaComentario[]>([])
   const fimComentariosRef = useRef<HTMLDivElement>(null)
   const [leituras, setLeituras] = useState<PendenciaLeitura[]>([])
@@ -68,13 +72,14 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_comentarios', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarComentarios())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_leituras', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarLeituras())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_tarefas', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarTarefas())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_anexos', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarAnexos())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pendencias', filter: `id=eq.${pendenciaId}` }, () => carregarPendencia())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [pendenciaId])
 
   async function carregarTudo() {
-    await Promise.all([carregarPendencia(), carregarTarefas(), carregarComentarios(), carregarLeituras()])
+    await Promise.all([carregarPendencia(), carregarTarefas(), carregarAnexos(), carregarComentarios(), carregarLeituras()])
     marcarComoLido()
   }
 
@@ -91,6 +96,34 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   async function carregarTarefas() {
     const { data } = await supabase.from('pendencia_tarefas').select('*').eq('pendencia_id', pendenciaId).order('ordem')
     setTarefas(data ?? [])
+  }
+
+  async function carregarAnexos() {
+    const { data } = await supabase.from('pendencia_anexos')
+      .select('*, autor:profiles(*)').eq('pendencia_id', pendenciaId).order('created_at')
+    setAnexos(data ?? [])
+  }
+
+  async function adicionarAnexo(file: File | null) {
+    if (!file) return
+    setEnviandoAnexo(true)
+    const resultado = await uploadAnexoPendencia(file, `pendencias/${pendenciaId}`)
+    if (resultado) {
+      await supabase.from('pendencia_anexos').insert({
+        pendencia_id: pendenciaId, nome_arquivo: file.name, url: resultado.url, path: resultado.path,
+        tipo: file.type || null, tamanho: file.size, criado_por: user!.id,
+      })
+      await carregarAnexos()
+    }
+    setEnviandoAnexo(false)
+    if (inputAnexoRef.current) inputAnexoRef.current.value = ''
+  }
+
+  async function deletarAnexo(anexo: PendenciaAnexo) {
+    if (!confirm(`Remover o documento "${anexo.nome_arquivo}"?`)) return
+    await deletarAnexoPendencia(anexo.path)
+    await supabase.from('pendencia_anexos').delete().eq('id', anexo.id)
+    await carregarAnexos()
   }
 
   async function carregarComentarios() {
@@ -362,6 +395,41 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                 <button onClick={adicionarTarefa} className="text-xs text-brand-600 font-medium hover:underline">Adicionar</button>
               )}
             </div>
+          </div>
+
+          {/* Documentos */}
+          <div className="space-y-1.5 pt-2 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <Paperclip size={13} /> Documentos
+            </p>
+            {anexos.map(a => {
+              const autor = a.autor as Profile | undefined
+              return (
+                <div key={a.id} className="flex items-center gap-2 group">
+                  <FileText size={15} className="text-gray-400 shrink-0" />
+                  <a href={a.url} target="_blank" rel="noopener noreferrer"
+                    className="flex-1 text-sm text-gray-700 hover:text-brand-600 hover:underline truncate min-w-0" title={a.nome_arquivo}>
+                    {a.nome_arquivo}
+                  </a>
+                  <span className="text-[10px] text-gray-400 whitespace-nowrap">{formatTamanhoArquivo(a.tamanho)}</span>
+                  <span className="text-[10px] text-gray-400 whitespace-nowrap hidden sm:inline">{autor?.nome?.split(' ')[0] ?? ''}</span>
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" download
+                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all shrink-0">
+                    <Download size={13} />
+                  </a>
+                  {(a.criado_por === user?.id || profile?.is_admin) && (
+                    <button onClick={() => deletarAnexo(a)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all shrink-0">
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+            <input ref={inputAnexoRef} type="file" className="hidden" onChange={e => adicionarAnexo(e.target.files?.[0] ?? null)} />
+            <button onClick={() => inputAnexoRef.current?.click()} disabled={enviandoAnexo}
+              className="text-xs text-brand-600 font-medium hover:underline disabled:opacity-50 mt-1">
+              {enviandoAnexo ? 'Enviando...' : '+ Adicionar documento'}
+            </button>
           </div>
 
           {/* Rastro de criação */}
