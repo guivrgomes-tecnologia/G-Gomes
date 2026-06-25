@@ -1403,8 +1403,15 @@ export default function Financeiro() {
                           </td>
                           <td className="p-2 text-center">
                             {l.id ? (
-                              <input type="checkbox" className="accent-green-600 w-4 h-4" checked={!!l.pago}
-                                onChange={e => atualizarCampo(l.id!, 'pago', e.target.checked)} />
+                              <div className="flex flex-col items-center gap-0.5">
+                                <input type="checkbox" className="accent-green-600 w-4 h-4" checked={!!l.pago}
+                                  onChange={e => atualizarCampo(l.id!, 'pago', e.target.checked)} />
+                                {l.pagamento && (
+                                  <span className="text-[9px] text-green-700 bg-green-100 px-1 rounded whitespace-nowrap" title="Data de pagamento informada na planilha">
+                                    pago {new Date(l.pagamento + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                  </span>
+                                )}
+                              </div>
                             ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="p-2 text-center">

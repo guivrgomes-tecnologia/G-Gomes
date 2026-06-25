@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon } from 'lucide-react'
+import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon, Reply } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentario, PendenciaLeitura, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { uploadImagemChat } from '../lib/chatHelpers'
@@ -47,6 +47,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   const fimComentariosRef = useRef<HTMLDivElement>(null)
   const [leituras, setLeituras] = useState<PendenciaLeitura[]>([])
   const [novaTarefa, setNovaTarefa] = useState('')
+  const [respondendoTarefa, setRespondendoTarefa] = useState<PendenciaTarefa | null>(null)
   const [novoComentario, setNovoComentario] = useState('')
   const [enviandoComentario, setEnviandoComentario] = useState(false)
   const [imagemSelecionada, setImagemSelecionada] = useState<File | null>(null)
@@ -151,7 +152,10 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
       if (!imagemUrl) { setEnviandoComentario(false); return }
     }
 
-    await supabase.from('pendencia_comentarios').insert({ pendencia_id: pendenciaId, autor_id: user!.id, mensagem: texto, imagem_url: imagemUrl })
+    await supabase.from('pendencia_comentarios').insert({
+      pendencia_id: pendenciaId, autor_id: user!.id, mensagem: texto, imagem_url: imagemUrl,
+      tarefa_id: respondendoTarefa?.id ?? null, tarefa_texto: respondendoTarefa?.texto ?? null,
+    })
 
     const participantes = (pend.pendencia_participantes ?? []) as any[]
     const envolvidos = Array.from(new Set([
@@ -166,6 +170,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
     })))
 
     setNovoComentario('')
+    setRespondendoTarefa(null)
     selecionarImagem(null)
     await carregarComentarios()
     await marcarComoLido()
@@ -336,6 +341,10 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                   {t.concluida ? <CheckSquare size={16} className="text-green-500" /> : <Square size={16} />}
                 </button>
                 <span className={`flex-1 text-sm ${t.concluida ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.texto}</span>
+                <button onClick={() => setRespondendoTarefa(t)} title="Responder esta tarefa no chat"
+                  className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all">
+                  <Reply size={13} />
+                </button>
                 <button onClick={() => deletarTarefa(t)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all">
                   <Trash2 size={13} />
                 </button>
@@ -415,6 +424,12 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                   <div key={c.id} className={`flex ${souEu ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 ${souEu ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800'}`}>
                       <p className="text-xs font-semibold mb-0.5 opacity-70">{souEu ? 'Você' : autor?.nome ?? 'Desconhecido'}</p>
+                      {c.tarefa_texto && (
+                        <div className={`flex items-center gap-1.5 rounded-lg px-2 py-1 mb-1.5 border-l-2 ${souEu ? 'bg-white/15 border-white/50' : 'bg-white border-brand-400'}`}>
+                          <CheckSquare size={11} className={souEu ? 'text-white/70 shrink-0' : 'text-brand-500 shrink-0'} />
+                          <p className={`text-xs truncate ${souEu ? 'text-white/80' : 'text-gray-500'}`}>{c.tarefa_texto}</p>
+                        </div>
+                      )}
                       {c.imagem_url && (
                         <a href={c.imagem_url} target="_blank" rel="noopener noreferrer">
                           <img src={c.imagem_url} alt="Imagem" className="rounded-lg max-w-full max-h-60 mb-1 object-contain" />
@@ -437,6 +452,16 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
               })}
               <div ref={fimComentariosRef} />
             </div>
+            {respondendoTarefa && (
+              <div className="flex items-center gap-2 bg-gray-50 border-l-2 border-brand-500 rounded-lg px-2.5 py-1.5 mb-2">
+                <Reply size={13} className="text-brand-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold text-brand-600">Respondendo à tarefa</p>
+                  <p className={`text-xs truncate ${respondendoTarefa.concluida ? 'line-through text-gray-400' : 'text-gray-600'}`}>{respondendoTarefa.texto}</p>
+                </div>
+                <button onClick={() => setRespondendoTarefa(null)} className="text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
+              </div>
+            )}
             {imagemPreview && (
               <div className="relative inline-block mb-2">
                 <img src={imagemPreview} alt="Pré-visualização" className="h-20 rounded-lg object-cover" />

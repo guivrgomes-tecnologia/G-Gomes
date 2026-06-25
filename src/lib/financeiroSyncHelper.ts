@@ -129,5 +129,20 @@ async function sincronizarLancamentosInterno(userId: string, arquivoUrl: string)
     }
   }))
 
+  // Dias já fechados não recebem novos lançamentos nem mudança de valor (pra não bagunçar o que já foi fechado),
+  // mas a data de pagamento é só informativa — então ela continua atualizando mesmo depois do dia fechado.
+  await Promise.all(dias.filter(dia => diasFechados.has(dia)).map(async dia => {
+    const existentesDoDia = (existentes ?? []).filter(r => r.dia === dia && !r.importado_de_id)
+    const existentesPorChave = new Map(existentesDoDia.map(r => [chaveLinha(r), r]))
+    const atualizacoes: any[] = []
+    for (const l of porDia.get(dia)!) {
+      const existente = existentesPorChave.get(chaveLinha(l))
+      if (existente && l.pagamento && existente.pagamento !== l.pagamento) {
+        atualizacoes.push(supabase.from('financeiro_lancamentos').update({ pagamento: l.pagamento }).eq('id', existente.id))
+      }
+    }
+    await Promise.all(atualizacoes)
+  }))
+
   return {}
 }

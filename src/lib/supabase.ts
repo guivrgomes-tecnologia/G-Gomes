@@ -96,6 +96,8 @@ export type PendenciaComentario = {
   autor_id: string
   mensagem: string
   imagem_url?: string | null
+  tarefa_id?: string | null
+  tarefa_texto?: string | null
   created_at: string
   autor?: Profile
 }
