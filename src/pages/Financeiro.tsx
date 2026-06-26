@@ -37,6 +37,16 @@ type ErroCaixa = {
   operadora: string
 }
 
+type DinheiroGuardado = {
+  id: string
+  origem: string
+  valor: number
+  destino: 'deposito' | 'escritorio'
+  conta_deposito: string | null
+  automatico: boolean
+}
+const ESCRITORIO = 'Escritório'
+
 const MICROSOFT_CLIENT_ID = '631a503a-8b6c-4215-ab27-3f09c1e16bc7'
 
 type Lancamento = {
@@ -143,10 +153,15 @@ export default function Financeiro() {
   const [novaDespesa, setNovaDespesa] = useState({ loja: LOJAS_CARTAO[0].nome, valor: '', descricao: '' })
   const [errosCaixa, setErrosCaixa] = useState<ErroCaixa[]>([])
   const [novoErro, setNovoErro] = useState({ loja: LOJAS_CARTAO[0].nome, valor: '', operadora: '' })
+  const [dinheiroGuardado, setDinheiroGuardado] = useState<DinheiroGuardado[]>([])
+  const [abrirDinheiroGuardado, setAbrirDinheiroGuardado] = useState(false)
+  const [novoDinheiroGuardado, setNovoDinheiroGuardado] = useState<{ origem: string; valor: string; destino: 'deposito' | 'escritorio'; conta_deposito: string }>({
+    origem: LOJAS_CARTAO[0].nome, valor: '', destino: 'deposito', conta_deposito: CONTAS_DEPOSITO[0],
+  })
 
   useEffect(() => { carregarConfig(); carregarFeriados() }, [])
   useEffect(() => {
-    carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa()
+    carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa(); carregarDinheiroGuardado()
   }, [diaSelecionado])
 
   useEffect(() => {
@@ -181,6 +196,43 @@ export default function Financeiro() {
 
   function erroPorLoja(loja: string) {
     return errosCaixa.filter(e => e.loja === loja).reduce((s, e) => s + e.valor, 0)
+  }
+
+  async function carregarDinheiroGuardado() {
+    const { data } = await supabase.from('financeiro_dinheiro_guardado').select('*').eq('dia', diaSelecionado).order('criado_em')
+    setDinheiroGuardado(data ?? [])
+  }
+
+  async function adicionarDinheiroGuardado() {
+    const valor = parseValorBR(novoDinheiroGuardado.valor)
+    if (!valor) return
+    const ehEscritorio = novoDinheiroGuardado.origem === ESCRITORIO
+    await supabase.from('financeiro_dinheiro_guardado').insert({
+      dia: diaSelecionado, origem: novoDinheiroGuardado.origem, valor,
+      destino: ehEscritorio ? novoDinheiroGuardado.destino : 'deposito',
+      conta_deposito: ehEscritorio && novoDinheiroGuardado.destino === 'deposito' ? novoDinheiroGuardado.conta_deposito : null,
+      usuario_id: user!.id,
+    })
+    setNovoDinheiroGuardado(d => ({ ...d, valor: '' }))
+    await carregarDinheiroGuardado()
+  }
+
+  async function removerDinheiroGuardado(id: string) {
+    await supabase.from('financeiro_dinheiro_guardado').delete().eq('id', id)
+    await carregarDinheiroGuardado()
+  }
+
+  // Dinheiro guardado de uma loja específica (dias anteriores) que agora entra junto no depósito de hoje.
+  function dinheiroGuardadoPorLoja(loja: string) {
+    return dinheiroGuardado.filter(d => d.origem === loja).reduce((s, d) => s + d.valor, 0)
+  }
+  // Dinheiro guardado no escritório que o usuário decidiu depositar agora numa conta específica.
+  function dinheiroGuardadoEscritorioPorConta(conta: string) {
+    return dinheiroGuardado.filter(d => d.origem === ESCRITORIO && d.destino === 'deposito' && d.conta_deposito === conta).reduce((s, d) => s + d.valor, 0)
+  }
+  // Dinheiro guardado no escritório que continua lá, só pra exibição (não entra em conta nenhuma).
+  function dinheiroGuardadoNoEscritorio() {
+    return dinheiroGuardado.filter(d => d.origem === ESCRITORIO && d.destino === 'escritorio').reduce((s, d) => s + d.valor, 0)
   }
 
   async function carregarDespesasLoja() {
@@ -383,6 +435,22 @@ export default function Financeiro() {
           usuario_id: user!.id,
         }))
       )
+
+      // O que devia ter sido depositado (fechamento de caixa + qualquer dinheiro já guardado de antes)
+      // e não foi (depósito zerado ou a menor) vira "dinheiro guardado" automaticamente pro dia seguinte,
+      // pra entrar de novo na conta do depósito de lá. Se de novo não for depositado, soma e empurra
+      // mais um dia — e assim por diante, até ser de fato depositado.
+      const diaSeguinte = somarDias(diaSelecionado, 1)
+      await supabase.from('financeiro_dinheiro_guardado').delete().eq('dia', diaSeguinte).eq('automatico', true)
+      const novasGuardadas = linhasDinheiro
+        .map(l => ({ origem: l.loja, valor: Math.round((l.fechamentoCaixa + dinheiroGuardadoPorLoja(l.loja) - l.deposito) * 100) / 100 }))
+        .filter(g => g.valor > 0.01)
+      if (novasGuardadas.length > 0) {
+        await supabase.from('financeiro_dinheiro_guardado').insert(novasGuardadas.map(g => ({
+          dia: diaSeguinte, origem: g.origem, valor: g.valor, destino: 'deposito', conta_deposito: null,
+          usuario_id: user!.id, automatico: true,
+        })))
+      }
     }
     await supabase.from('financeiro_saldos').upsert(
       { dia: diaSelecionado, campo: 'CONFERENCIA_DINHEIRO_FECHADA', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
@@ -403,7 +471,10 @@ export default function Financeiro() {
   }
 
   async function reabrirConferenciaDinheiro() {
-    // Só libera a edição — os valores salvos continuam lá, não apaga nada.
+    // Só libera a edição — os valores salvos continuam lá, não apaga nada. O rollover automático
+    // pro dia seguinte fica desatualizado até fechar de novo, então remove pra não duplicar/ficar errado.
+    const diaSeguinte = somarDias(diaSelecionado, 1)
+    await supabase.from('financeiro_dinheiro_guardado').delete().eq('dia', diaSeguinte).eq('automatico', true)
     await supabase.from('financeiro_saldos').upsert(
       { dia: diaSelecionado, campo: 'CONFERENCIA_DINHEIRO_FECHADA', valor: 0, usuario_id: user!.id, updated_at: new Date().toISOString() },
       { onConflict: 'dia,campo' }
@@ -731,7 +802,9 @@ export default function Financeiro() {
   }
   function depositoPorConta(conta: string) {
     const linhas = dinheiroSalvo ?? dinheiroPreviaCalc
-    return (linhas ?? []).filter(l => l.contaDeposito === conta).reduce((s, l) => s + l.deposito, 0)
+    const depositoLojas = (linhas ?? []).filter(l => l.contaDeposito === conta)
+      .reduce((s, l) => s + l.deposito + dinheiroGuardadoPorLoja(l.loja), 0)
+    return depositoLojas + dinheiroGuardadoEscritorioPorConta(conta)
   }
 
   // "Loja 01" representa o fluxo que antes passava pela FAPS ITAU: saldo inicial + depósitos - pagamentos.
@@ -1104,6 +1177,9 @@ export default function Financeiro() {
                               className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-gray-100 disabled:text-gray-500"
                               onBlur={e => atualizarDeposito(l.loja, e.target.value, !!dinheiroSalvo)}
                               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
+                            {dinheiroGuardadoPorLoja(l.loja) > 0 && (
+                              <p className="text-[10px] text-cyan-700 mt-0.5">+ {fmt(dinheiroGuardadoPorLoja(l.loja))} guardado</p>
+                            )}
                           </td>
                           <td className="p-2">
                             <select disabled={conferenciaDinheiroFechada} className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white disabled:bg-gray-100 disabled:text-gray-500"
@@ -1267,6 +1343,68 @@ export default function Financeiro() {
                       <span className="font-medium w-24 text-right">{fmt(e.valor)}</span>
                       {!conferenciaDinheiroFechada && (
                         <button onClick={() => removerErroCaixa(e.id)} className="text-gray-300 hover:text-red-500"><X size={13} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            )}
+          </div>
+
+          {/* Dinheiro guardado a ser depositado */}
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 mb-6">
+            <button onClick={() => setAbrirDinheiroGuardado(v => !v)} className="w-full flex items-center justify-between text-left">
+              <h3 className="text-sm font-semibold text-cyan-800 flex items-center gap-1.5">
+                <Banknote size={15} /> Dinheiro guardado a ser depositado {dinheiroGuardado.length > 0 && <span className="text-[10px] bg-cyan-200 text-cyan-800 px-1.5 py-0.5 rounded-full">{dinheiroGuardado.length}</span>}
+              </h3>
+              <ChevronDown size={16} className={`text-cyan-700 transition-transform ${abrirDinheiroGuardado ? 'rotate-180' : ''}`} />
+            </button>
+            {abrirDinheiroGuardado && (
+            <div className="mt-3">
+              <p className="text-xs text-cyan-700 mb-2">Dinheiro de dias anteriores que estava guardado e vai ser depositado agora.</p>
+              {dinheiroGuardadoNoEscritorio() > 0 && (
+                <p className="text-xs text-cyan-800 bg-cyan-100 rounded-lg px-3 py-1.5 mb-2 inline-block">
+                  Total guardado no escritório (sem depositar): <strong>{fmt(dinheiroGuardadoNoEscritorio())}</strong>
+                </p>
+              )}
+              {!conferenciaDinheiroFechada && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <select className="input text-xs py-1.5 w-44" value={novoDinheiroGuardado.origem}
+                    onChange={e => setNovoDinheiroGuardado(d => ({ ...d, origem: e.target.value }))}>
+                    {LOJAS_CARTAO.map(l => <option key={l.nome} value={l.nome}>{l.nome}</option>)}
+                    <option value={ESCRITORIO}>{ESCRITORIO}</option>
+                  </select>
+                  <input type="text" inputMode="decimal" placeholder="Valor" className="no-spin input text-xs py-1.5 w-28"
+                    value={novoDinheiroGuardado.valor} onChange={e => setNovoDinheiroGuardado(d => ({ ...d, valor: e.target.value }))} />
+                  {novoDinheiroGuardado.origem === ESCRITORIO && (
+                    <select className="input text-xs py-1.5 w-40" value={novoDinheiroGuardado.destino}
+                      onChange={e => setNovoDinheiroGuardado(d => ({ ...d, destino: e.target.value as 'deposito' | 'escritorio' }))}>
+                      <option value="deposito">Depositar</option>
+                      <option value="escritorio">Guardar no escritório</option>
+                    </select>
+                  )}
+                  {novoDinheiroGuardado.origem === ESCRITORIO && novoDinheiroGuardado.destino === 'deposito' && (
+                    <select className="input text-xs py-1.5 w-40" value={novoDinheiroGuardado.conta_deposito}
+                      onChange={e => setNovoDinheiroGuardado(d => ({ ...d, conta_deposito: e.target.value }))}>
+                      {CONTAS_DEPOSITO.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                  <button onClick={adicionarDinheiroGuardado} className="btn-secondary text-xs flex items-center gap-1"><Plus size={12} /> Adicionar</button>
+                </div>
+              )}
+              {dinheiroGuardado.length > 0 && (
+                <div className="space-y-1">
+                  {dinheiroGuardado.map(d => (
+                    <div key={d.id} className="flex items-center gap-2 text-xs bg-white border border-cyan-100 rounded-lg px-3 py-1.5">
+                      <span className="font-medium w-44 truncate">{d.origem}</span>
+                      <span className="text-gray-600 flex-1 truncate flex items-center gap-1.5">
+                        {d.origem === ESCRITORIO ? (d.destino === 'deposito' ? `Depositar em ${d.conta_deposito}` : 'Guardado no escritório') : 'Soma no depósito da loja'}
+                        {d.automatico && <span className="text-[10px] bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded-full whitespace-nowrap">não depositado ontem</span>}
+                      </span>
+                      <span className="font-medium w-24 text-right">{fmt(d.valor)}</span>
+                      {!conferenciaDinheiroFechada && (
+                        <button onClick={() => removerDinheiroGuardado(d.id)} className="text-gray-300 hover:text-red-500"><X size={13} /></button>
                       )}
                     </div>
                   ))}
@@ -1673,7 +1811,7 @@ export default function Financeiro() {
                     <td colSpan={10} className={`p-1 border border-gray-300 font-bold uppercase text-center ${cor.headerText}`}>{grupo.conta}</td>
                   </tr>
                   {grupo.itens.map((l, i) => (
-                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' ? 'line-through text-gray-400' : ''}`}>
+                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' || l.pago ? 'line-through text-gray-400' : ''}`}>
                       <td className="p-1 border border-gray-300 text-center">{l.empresa}</td>
                       <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                       <td className="p-1 border border-gray-300 text-center">{l.fornecedor}</td>

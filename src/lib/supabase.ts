@@ -120,6 +120,18 @@ export type PendenciaAnexo = {
   autor?: Profile
 }
 
+export type PendenciaLancamento = {
+  id: string
+  pendencia_id: string
+  lancamento_id: string | null
+  dia: string
+  empresa: string | null
+  fornecedor: string | null
+  valor: number | null
+  criado_por: string
+  criado_em: string
+}
+
 export type PendenciaLeitura = {
   pendencia_id: string
   usuario_id: string

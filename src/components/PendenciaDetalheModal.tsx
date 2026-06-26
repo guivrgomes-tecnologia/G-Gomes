@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon, Reply, Paperclip, FileText, Download } from 'lucide-react'
-import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentario, PendenciaLeitura, PendenciaAnexo, criarNotificacoes } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom'
+import { X, ArrowRight, Pencil, CheckSquare, Square, Trash2, Lightbulb, Send, MessageSquare, Image as ImageIcon, Reply, Paperclip, FileText, Download, Landmark, Search } from 'lucide-react'
+import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentario, PendenciaLeitura, PendenciaAnexo, PendenciaLancamento, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { uploadImagemChat } from '../lib/chatHelpers'
 import { uploadAnexoPendencia, deletarAnexoPendencia, formatTamanhoArquivo } from '../lib/anexoHelpers'
@@ -36,6 +37,9 @@ function formatPrazo(prazo: string) {
 
 function parsePrazo(prazo: string) { return new Date(prazo.includes('T') ? prazo : prazo + 'T23:59:59') }
 
+type LancamentoBusca = { id: string; dia: string; empresa: string | null; fornecedor: string | null; valor: number | null }
+const fmtValor = (v: number | null) => v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, onChanged }: {
   pendenciaId: string
   onClose: () => void
@@ -43,6 +47,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   onChanged?: () => void
 }) {
   const { user, profile } = useAuth()
+  const navigate = useNavigate()
   const [pend, setPend] = useState<Pendencia | null>(null)
   const [tarefas, setTarefas] = useState<PendenciaTarefa[]>([])
   const [anexos, setAnexos] = useState<PendenciaAnexo[]>([])
@@ -55,6 +60,10 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   const [respondendoTarefa, setRespondendoTarefa] = useState<PendenciaTarefa | null>(null)
   const [respondendoComentario, setRespondendoComentario] = useState<PendenciaComentario | null>(null)
   const [respondendoAnexo, setRespondendoAnexo] = useState<PendenciaAnexo | null>(null)
+  const [lancamentos, setLancamentos] = useState<PendenciaLancamento[]>([])
+  const [buscandoLancamento, setBuscandoLancamento] = useState(false)
+  const [textoBuscaLancamento, setTextoBuscaLancamento] = useState('')
+  const [resultadosLancamento, setResultadosLancamento] = useState<LancamentoBusca[]>([])
   const [novoComentario, setNovoComentario] = useState('')
   const [enviandoComentario, setEnviandoComentario] = useState(false)
   const [imagemSelecionada, setImagemSelecionada] = useState<File | null>(null)
@@ -76,13 +85,14 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_leituras', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarLeituras())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_tarefas', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarTarefas())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_anexos', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarAnexos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pendencia_lancamentos', filter: `pendencia_id=eq.${pendenciaId}` }, () => carregarLancamentos())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'pendencias', filter: `id=eq.${pendenciaId}` }, () => carregarPendencia())
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [pendenciaId])
 
   async function carregarTudo() {
-    await Promise.all([carregarPendencia(), carregarTarefas(), carregarAnexos(), carregarComentarios(), carregarLeituras()])
+    await Promise.all([carregarPendencia(), carregarTarefas(), carregarAnexos(), carregarLancamentos(), carregarComentarios(), carregarLeituras()])
     marcarComoLido()
   }
 
@@ -127,6 +137,35 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
     await deletarAnexoPendencia(anexo.path)
     await supabase.from('pendencia_anexos').delete().eq('id', anexo.id)
     await carregarAnexos()
+  }
+
+  async function carregarLancamentos() {
+    const { data } = await supabase.from('pendencia_lancamentos').select('*').eq('pendencia_id', pendenciaId).order('criado_em')
+    setLancamentos(data ?? [])
+  }
+
+  async function buscarLancamentos(texto: string) {
+    setTextoBuscaLancamento(texto)
+    if (!texto.trim()) { setResultadosLancamento([]); return }
+    const termo = `%${texto.trim()}%`
+    const { data } = await supabase.from('financeiro_lancamentos')
+      .select('id, dia, empresa, fornecedor, valor')
+      .or(`empresa.ilike.${termo},fornecedor.ilike.${termo},nota.ilike.${termo}`)
+      .order('dia', { ascending: false }).limit(15)
+    setResultadosLancamento(data ?? [])
+  }
+
+  async function adicionarLancamento(l: LancamentoBusca) {
+    await supabase.from('pendencia_lancamentos').insert({
+      pendencia_id: pendenciaId, lancamento_id: l.id, dia: l.dia, empresa: l.empresa, fornecedor: l.fornecedor, valor: l.valor, criado_por: user!.id,
+    })
+    setBuscandoLancamento(false); setTextoBuscaLancamento(''); setResultadosLancamento([])
+    await carregarLancamentos()
+  }
+
+  async function removerLancamento(pl: PendenciaLancamento) {
+    await supabase.from('pendencia_lancamentos').delete().eq('id', pl.id)
+    await carregarLancamentos()
   }
 
   async function carregarComentarios() {
@@ -442,6 +481,60 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
               className="text-xs text-brand-600 font-medium hover:underline disabled:opacity-50 mt-1">
               {enviandoAnexo ? 'Enviando...' : '+ Adicionar documento'}
             </button>
+          </div>
+
+          {/* Lançamentos do Financeiro */}
+          <div className="space-y-1.5 pt-2 border-t border-gray-100">
+            <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <Landmark size={13} /> Lançamentos
+            </p>
+            {lancamentos.map(pl => (
+              <div key={pl.id} className="flex items-center gap-2 group">
+                <Landmark size={15} className="text-gray-400 shrink-0" />
+                <button onClick={() => navigate(`/financeiro/${pl.dia}`)}
+                  className="flex-1 text-left text-sm text-gray-700 hover:text-brand-600 hover:underline truncate min-w-0">
+                  {pl.empresa ?? pl.fornecedor}{pl.fornecedor && pl.empresa ? ` · ${pl.fornecedor}` : ''}
+                </button>
+                <span className="text-[10px] text-gray-400 whitespace-nowrap">{new Date(pl.dia + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{fmtValor(pl.valor)}</span>
+                <button onClick={() => removerLancamento(pl)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all shrink-0">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+            {buscandoLancamento ? (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Search size={13} className="text-gray-400 shrink-0" />
+                  <input autoFocus className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400"
+                    placeholder="Buscar por empresa, fornecedor ou fatura..."
+                    value={textoBuscaLancamento} onChange={e => buscarLancamentos(e.target.value)} />
+                  <button onClick={() => { setBuscandoLancamento(false); setTextoBuscaLancamento(''); setResultadosLancamento([]) }}
+                    className="text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
+                </div>
+                {textoBuscaLancamento.trim() && (
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {resultadosLancamento.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-2">Nenhum lançamento encontrado.</p>
+                    )}
+                    {resultadosLancamento.map(l => (
+                      <button key={l.id} onClick={() => adicionarLancamento(l)}
+                        className="w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-white transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-700 truncate">{l.empresa ?? l.fornecedor}</p>
+                          <p className="text-[10px] text-gray-400">{new Date(l.dia + 'T12:00:00').toLocaleDateString('pt-BR')}{l.fornecedor && l.empresa ? ` · ${l.fornecedor}` : ''}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-600 whitespace-nowrap shrink-0">{fmtValor(l.valor)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button onClick={() => setBuscandoLancamento(true)} className="text-xs text-brand-600 font-medium hover:underline mt-1">
+                + Adicionar lançamento
+              </button>
+            )}
           </div>
 
           {/* Rastro de criação */}

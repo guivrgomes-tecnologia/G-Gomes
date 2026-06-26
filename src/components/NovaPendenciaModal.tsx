@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Landmark, Search } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { criarEventoDaPendencia } from '../lib/pendenciaEventoHelper'
 import Avatar from './Avatar'
+
+type LancamentoBusca = { id: string; dia: string; empresa: string | null; fornecedor: string | null; valor: number | null }
+const fmtValor = (v: number | null) => v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 type FormState = {
   titulo: string; descricao: string; status: Pendencia['status']
@@ -66,6 +69,10 @@ export default function NovaPendenciaModal({ onClose, onCreated }: { onClose: ()
   const [saving, setSaving] = useState(false)
   const [tarefas, setTarefas] = useState<string[]>([])
   const [novaTarefa, setNovaTarefa] = useState('')
+  const [lancamentos, setLancamentos] = useState<LancamentoBusca[]>([])
+  const [buscandoLancamento, setBuscandoLancamento] = useState(false)
+  const [textoBuscaLancamento, setTextoBuscaLancamento] = useState('')
+  const [resultadosLancamento, setResultadosLancamento] = useState<LancamentoBusca[]>([])
 
   function adicionarTarefaLocal() {
     const texto = novaTarefa.trim()
@@ -75,6 +82,24 @@ export default function NovaPendenciaModal({ onClose, onCreated }: { onClose: ()
   }
   function removerTarefaLocal(idx: number) {
     setTarefas(t => t.filter((_, i) => i !== idx))
+  }
+
+  async function buscarLancamentos(texto: string) {
+    setTextoBuscaLancamento(texto)
+    if (!texto.trim()) { setResultadosLancamento([]); return }
+    const termo = `%${texto.trim()}%`
+    const { data } = await supabase.from('financeiro_lancamentos')
+      .select('id, dia, empresa, fornecedor, valor')
+      .or(`empresa.ilike.${termo},fornecedor.ilike.${termo},nota.ilike.${termo}`)
+      .order('dia', { ascending: false }).limit(15)
+    setResultadosLancamento(data ?? [])
+  }
+  function adicionarLancamentoLocal(l: LancamentoBusca) {
+    setLancamentos(prev => [...prev, l])
+    setBuscandoLancamento(false); setTextoBuscaLancamento(''); setResultadosLancamento([])
+  }
+  function removerLancamentoLocal(idx: number) {
+    setLancamentos(prev => prev.filter((_, i) => i !== idx))
   }
 
   useEffect(() => {
@@ -125,6 +150,12 @@ export default function NovaPendenciaModal({ onClose, onCreated }: { onClose: ()
 
     if (inserted && tarefas.length > 0) {
       await supabase.from('pendencia_tarefas').insert(tarefas.map((texto, ordem) => ({ pendencia_id: inserted.id, texto, ordem })))
+    }
+
+    if (inserted && lancamentos.length > 0) {
+      await supabase.from('pendencia_lancamentos').insert(lancamentos.map(l => ({
+        pendencia_id: inserted.id, lancamento_id: l.id, dia: l.dia, empresa: l.empresa, fornecedor: l.fornecedor, valor: l.valor, criado_por: user!.id,
+      })))
     }
 
     setSaving(false)
@@ -228,6 +259,55 @@ export default function NovaPendenciaModal({ onClose, onCreated }: { onClose: ()
                 <button type="button" onClick={adicionarTarefaLocal} className="text-xs text-brand-600 font-medium hover:underline shrink-0 px-2">Adicionar</button>
               )}
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Lançamentos do Financeiro <span className="text-gray-400 font-normal">(opcional)</span></label>
+            {lancamentos.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {lancamentos.map((l, idx) => (
+                  <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-1.5">
+                    <Landmark size={14} className="text-gray-400 shrink-0" />
+                    <span className="flex-1 text-sm text-gray-700 truncate">{l.empresa ?? l.fornecedor}{l.fornecedor && l.empresa ? ` · ${l.fornecedor}` : ''}</span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">{new Date(l.dia + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                    <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{fmtValor(l.valor)}</span>
+                    <button type="button" onClick={() => removerLancamentoLocal(idx)} className="text-gray-300 hover:text-red-400"><X size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {buscandoLancamento ? (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5">
+                <div className="flex items-center gap-2 mb-2">
+                  <Search size={13} className="text-gray-400 shrink-0" />
+                  <input autoFocus className="flex-1 text-sm bg-transparent outline-none placeholder-gray-400"
+                    placeholder="Buscar por empresa, fornecedor ou fatura..."
+                    value={textoBuscaLancamento} onChange={e => buscarLancamentos(e.target.value)} />
+                  <button type="button" onClick={() => { setBuscandoLancamento(false); setTextoBuscaLancamento(''); setResultadosLancamento([]) }}
+                    className="text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
+                </div>
+                {textoBuscaLancamento.trim() && (
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {resultadosLancamento.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-2">Nenhum lançamento encontrado.</p>
+                    )}
+                    {resultadosLancamento.map(l => (
+                      <button key={l.id} type="button" onClick={() => adicionarLancamentoLocal(l)}
+                        className="w-full text-left flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-white transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-gray-700 truncate">{l.empresa ?? l.fornecedor}</p>
+                          <p className="text-[10px] text-gray-400">{new Date(l.dia + 'T12:00:00').toLocaleDateString('pt-BR')}{l.fornecedor && l.empresa ? ` · ${l.fornecedor}` : ''}</p>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-600 whitespace-nowrap shrink-0">{fmtValor(l.valor)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setBuscandoLancamento(true)} className="text-xs text-brand-600 font-medium hover:underline">
+                + Adicionar lançamento
+              </button>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vincular a uma reunião <span className="text-gray-400 font-normal">(opcional)</span></label>
