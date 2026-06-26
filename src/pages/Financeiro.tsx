@@ -624,13 +624,29 @@ export default function Financeiro() {
 
   async function reabrirDia() {
     if (!confirm('Reabrir esse dia? Os lançamentos voltam a ficar editáveis (nada é apagado).')) return
-    const { error, data } = await supabase.from('financeiro_lancamentos').update({ fechado: false }).eq('dia', diaSelecionado).eq('fechado', true).select()
-    if (error) {
-      alert('Erro ao reabrir: ' + error.message)
+    const { data: fechados } = await supabase.from('financeiro_lancamentos').select('*').eq('dia', diaSelecionado).eq('fechado', true)
+    if (!fechados || fechados.length === 0) {
+      alert('Nenhum lançamento fechado encontrado. Pode ser bloqueio de permissão (RLS) na tabela financeiro_lancamentos.')
       return
     }
-    if (!data || data.length === 0) {
-      alert('Nenhum lançamento foi alterado. Pode ser bloqueio de permissão (RLS) na tabela financeiro_lancamentos.')
+    // Reabre um por um em vez de um update só: se dois lançamentos fechados tiverem a mesma
+    // identidade (empresa/fornecedor/nota/vencimento) — um duplicado de verdade que passou —
+    // reabrir os dois juntos violaria a trava que impede dois iguais em aberto no mesmo dia.
+    // Assim os outros continuam sendo reabertos normalmente, e só avisa quais ficaram de fora.
+    const bloqueados: string[] = []
+    for (const l of fechados) {
+      const { error } = await supabase.from('financeiro_lancamentos').update({ fechado: false }).eq('id', l.id)
+      if (error) {
+        if ((error as any).code === '23505') {
+          bloqueados.push(`${l.empresa ?? ''} ${l.fornecedor ?? ''} (${fmt(l.valor)})`.trim())
+        } else {
+          alert('Erro ao reabrir: ' + error.message)
+          return
+        }
+      }
+    }
+    if (bloqueados.length > 0) {
+      alert(`Reabri os demais, mas ${bloqueados.length} lançamento(s) não puderam ser reabertos porque já existe outro igual em aberto nesse dia:\n\n${bloqueados.join('\n')}\n\nApague um dos duplicados (em "Apagar duplicados") e tente reabrir de novo.`)
     }
     await carregarDia()
   }
