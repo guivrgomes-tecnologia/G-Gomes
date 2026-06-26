@@ -640,12 +640,15 @@ export default function Financeiro() {
     // Reabre um por um em vez de um update só: se dois lançamentos tiverem a mesma identidade
     // (empresa/fornecedor/nota/vencimento) não dá pra ter os dois em aberto no mesmo dia.
     // Se o conflito for com uma cópia importada de outro dia (importado_de_id preenchido — só uma
-    // referência, não a fonte original), apaga essa cópia antes de reabrir o lançamento de verdade.
-    // Senão, deixa esse de fora e avisa pra resolver manualmente.
+    // referência, não a fonte original) OU com uma sobra de um fechamento anterior (criada antes
+    // da cópia fechada — o "fechar" devia ter apagado os não-fechados antes de criar a cópia fechada,
+    // mas pode ter falhado silenciosamente, ex.: por permissão), apaga essa sobra antes de reabrir
+    // o lançamento de verdade. Senão, deixa esse de fora e avisa pra resolver manualmente.
     const bloqueados: string[] = []
     for (const l of fechados) {
       const conflito = abertosPorChave.get(chave(l))
-      if (conflito && conflito.importado_de_id) {
+      const ehSobraAntiga = conflito && new Date(conflito.criado_em) < new Date(l.criado_em)
+      if (conflito && (conflito.importado_de_id || ehSobraAntiga)) {
         await supabase.from('financeiro_lancamentos').delete().eq('id', conflito.id)
       }
       const { error } = await supabase.from('financeiro_lancamentos').update({ fechado: false }).eq('id', l.id)
