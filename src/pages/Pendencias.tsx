@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import PendenciaDetalheModal, { STATUS_LABELS, STATUS_COLORS, PRIO_COLORS, STATUS_ORDER } from '../components/PendenciaDetalheModal'
 import NovaPendenciaModal from '../components/NovaPendenciaModal'
 import Avatar from '../components/Avatar'
+import { criarEventoDaPendencia, atualizarEventoDaPendencia, atualizarParticipantesEvento } from '../lib/pendenciaEventoHelper'
 
 type FormState = {
   titulo: string; descricao: string; status: Pendencia['status']
@@ -247,14 +248,19 @@ export default function Pendencias() {
     }).eq('id', editando.id)
     await salvarParticipantes(editando.id, editForm.para_usuario_ids)
     if (editando.evento_id) {
-      await supabase.from('evento_participantes').delete().eq('evento_id', editando.evento_id)
-      // Inclui todos os destinatários como participantes, inclusive o próprio criador
-      // quando ele se marcou como destinatário (necessário pra Agenda decidir se o
-      // evento deve aparecer pra ele, já que eventos de pendência só aparecem pro
-      // criador se ele também for participante).
-      if (editForm.para_usuario_ids.length > 0) {
-        await supabase.from('evento_participantes').insert(editForm.para_usuario_ids.map(uid => ({ evento_id: editando.evento_id, usuario_id: uid })))
+      await atualizarParticipantesEvento(editando.evento_id, editForm.para_usuario_ids)
+      if (editForm.prazo) {
+        // Reaplica título/data/descrição no evento já existente e propaga a mudança pra todas
+        // as cópias no Google Calendar (criador + participantes conectados), não só a do criador.
+        await atualizarEventoDaPendencia(
+          editando.evento_id, editForm.titulo, editForm.descricao || null, editForm.prazo, editForm.hora,
+          editando.criado_por, editForm.status === 'resolvida'
+        )
       }
+    } else if (editForm.prazo) {
+      // A pendência não tinha data antes (por isso nunca ganhou um evento) e agora ganhou uma —
+      // cria o evento agora, já com todos os destinatários sincronizados.
+      await criarEventoDaPendencia(editForm.titulo, editForm.descricao || null, editForm.prazo, editForm.hora, editando.criado_por, editando.id, editForm.para_usuario_ids)
     }
     setSaving(false); setEditando(null); loadData()
   }

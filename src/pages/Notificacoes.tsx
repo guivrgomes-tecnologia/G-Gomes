@@ -30,9 +30,14 @@ export default function Notificacoes() {
   }
 
   async function marcarLida(n: Notificacao) {
-    if (!n.lida) {
-      await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id)
-      setNotificacoes(prev => prev.map(x => x.id === n.id ? { ...x, lida: true } : x))
+    // Mesmo critério do sininho: abrir uma notificação de um link (ex.: chat de uma pendência) marca
+    // como lidas também as outras notificações não lidas daquele mesmo link.
+    const idsRelacionados = n.link
+      ? notificacoes.filter(x => !x.lida && x.link === n.link).map(x => x.id)
+      : [n.id]
+    if (idsRelacionados.length > 0) {
+      await supabase.from('notificacoes').update({ lida: true }).in('id', idsRelacionados)
+      setNotificacoes(prev => prev.map(x => idsRelacionados.includes(x.id) ? { ...x, lida: true } : x))
     }
     if (n.link) navigate(n.link)
   }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { supabase, Pendencia, Profile, Setor, criarNotificacoes } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { criarEventoDaPendencia } from '../lib/pendenciaEventoHelper'
 import Avatar from './Avatar'
 
 type FormState = {
@@ -25,45 +26,6 @@ function todayYYYYMMDD() {
 function localToISO(dt: string) { return new Date(dt).toISOString() }
 
 const PENDENCIA_COR = '#1e293b'
-
-async function criarEventoDaPendencia(titulo: string, descricao: string | null, prazo: string, hora: string, userId: string, pendenciaId: string, participantesIds: string[] = []) {
-  const dataInicio = hora ? localToISO(`${prazo}T${hora}`) : prazo
-  let horaFim: string | null = null
-  if (hora) {
-    const [h, m] = hora.split(':').map(Number)
-    const d = new Date(2000, 0, 1, h, m + 1)
-    horaFim = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  }
-  const dataFim = horaFim ? localToISO(`${prazo}T${horaFim}`) : null
-  const { data: evento } = await supabase.from('eventos').insert({
-    titulo: `📌 ${titulo}`, descricao: descricao || null,
-    data_inicio: dataInicio, data_fim: dataFim,
-    dia_inteiro: !hora, cor: PENDENCIA_COR, concluido: false, criado_por: userId,
-  }).select('id').single()
-  if (evento) {
-    await supabase.from('pendencias').update({ evento_id: evento.id }).eq('id', pendenciaId)
-    // Inclui todos os destinatários como participantes, inclusive o próprio criador
-    // quando ele se marcou como destinatário (necessário pra Agenda decidir se o
-    // evento deve aparecer pra ele, já que eventos de pendência só aparecem pro
-    // criador se ele também for participante).
-    if (participantesIds.length > 0) {
-      await supabase.from('evento_participantes').insert(participantesIds.map(uid => ({ evento_id: evento.id, usuario_id: uid })))
-    }
-
-    const { data: gtok } = await supabase.from('google_tokens').select('usuario_id').eq('usuario_id', userId).single()
-    if (gtok) {
-      await supabase.functions.invoke('google-calendar-sync', {
-        body: {
-          action: 'create', user_id: userId,
-          evento: {
-            id: evento.id, titulo_google: `P - ${titulo}`, descricao: descricao || null,
-            data_inicio: dataInicio, data_fim: dataFim, dia_inteiro: !hora,
-          },
-        },
-      })
-    }
-  }
-}
 
 async function salvarParticipantes(pendenciaId: string, ids: string[]) {
   await supabase.from('pendencia_participantes').delete().eq('pendencia_id', pendenciaId)

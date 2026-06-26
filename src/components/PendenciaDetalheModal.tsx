@@ -4,6 +4,7 @@ import { supabase, Pendencia, Profile, Setor, PendenciaTarefa, PendenciaComentar
 import { useAuth } from '../contexts/AuthContext'
 import { uploadImagemChat } from '../lib/chatHelpers'
 import { uploadAnexoPendencia, deletarAnexoPendencia, formatTamanhoArquivo } from '../lib/anexoHelpers'
+import { sincronizarConclusaoPendencia, sincronizarExclusaoGoogle } from '../lib/pendenciaEventoHelper'
 
 export const STATUS_LABELS: Record<Pendencia['status'], string> = {
   aberta: 'A resolver',
@@ -225,7 +226,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   async function atualizarStatus(status: Pendencia['status']) {
     await supabase.from('pendencias').update({ status, updated_at: new Date().toISOString() }).eq('id', pendenciaId)
     if (pend?.evento_id) {
-      await supabase.from('eventos').update({ concluido: status === 'resolvida' }).eq('id', pend.evento_id)
+      await sincronizarConclusaoPendencia(pend.evento_id, pend.criado_por, status === 'resolvida')
     }
     await carregarPendencia()
     onChanged?.()
@@ -252,12 +253,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
     if (!podeDeletar) return
     if (!confirm('Deletar esta pendência? Ela será removida das listas e agendas de todos os marcados.')) return
     if (pend.evento_id) {
-      const { data: evento } = await supabase.from('eventos').select('google_event_id').eq('id', pend.evento_id).single()
-      if (evento?.google_event_id) {
-        await supabase.functions.invoke('google-calendar-sync', {
-          body: { action: 'delete', user_id: pend.criado_por, evento: { google_event_id: evento.google_event_id } },
-        })
-      }
+      await sincronizarExclusaoGoogle(pend.evento_id, pend.criado_por)
       await supabase.from('eventos').delete().eq('id', pend.evento_id)
     }
     const { error } = await supabase.from('pendencias').delete().eq('id', pendenciaId)
