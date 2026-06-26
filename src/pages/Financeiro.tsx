@@ -93,9 +93,6 @@ export default function Financeiro() {
   const [conectado, setConectado] = useState<boolean | null>(null)
   const [arquivoUrl, setArquivoUrl] = useState('')
   const [pastaOnedrive, setPastaOnedrive] = useState('')
-  const [finalizandoDia, setFinalizandoDia] = useState(false)
-  const [erroFinalizar, setErroFinalizar] = useState('')
-  const [diaFinalizado, setDiaFinalizado] = useState(false)
   const [mostrarConfig, setMostrarConfig] = useState(false)
   const [fechado, setFechado] = useState<{ fechado_em: string } | null>(null)
   const [lancamentosSalvos, setLancamentosSalvos] = useState<Lancamento[]>([])
@@ -150,8 +147,6 @@ export default function Financeiro() {
   useEffect(() => { carregarConfig(); carregarFeriados() }, [])
   useEffect(() => {
     carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa()
-    setDiaFinalizado(false)
-    setErroFinalizar('')
   }, [diaSelecionado])
 
   useEffect(() => {
@@ -808,98 +803,6 @@ export default function Financeiro() {
 
   function saldoDepoisPagamentos(conta: string): number {
     return saldoAntesPagamentos(conta) - pagamentosPorConta(conta)
-  }
-
-  function gerarRelatorioCompletoHTML(): string {
-    const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const linhasCartao = conferenciaSalva ?? conferenciaPreviaCalc ?? []
-    const linhasDinheiro = dinheiroSalvo ?? dinheiroPreviaCalc ?? []
-    const css = `
-      body{font-family:Arial,Helvetica,sans-serif;color:#111;padding:24px;max-width:1100px;margin:0 auto}
-      h1{font-size:20px;margin-bottom:4px}
-      h2{font-size:14px;text-transform:uppercase;margin:24px 0 8px;color:#374151}
-      table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px}
-      th,td{border:1px solid #d1d5db;padding:6px 8px;text-align:left}
-      th{background:#f3f4f6}
-      .num{text-align:right}
-      .total{font-weight:bold;background:#f3f4f6}
-      .grupo{font-weight:bold;text-transform:uppercase;background:#e5e7eb}
-      .naopagar td{text-decoration:line-through;color:#9ca3af}
-    `
-    const linhasSaldoInicial = CONTAS_SALDO_INICIAL.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldos[c] ?? 0))}</td></tr>`).join('')
-    const linhasCartaoHtml = linhasCartao.map(l => `<tr><td>${esc(l.loja)}</td><td class="num">${esc(fmt(l.vendaCartao))}</td><td class="num">${esc(fmt(l.recebidoRede))}</td><td class="num">${esc(fmt(l.taxaRede))}</td><td class="num">${esc(fmt(l.diferenca - notasPorLoja(l.loja).cartao))}</td></tr>`).join('')
-    const linhasDinheiroHtml = linhasDinheiro.map(l => `<tr><td>${esc(l.loja)}</td><td class="num">${esc(fmt(l.vendaDinheiro))}</td><td class="num">${esc(fmt(l.fechamentoCaixa))}</td><td class="num">${esc(fmt(l.deposito))}</td><td>${esc(l.contaDeposito)}</td><td class="num">${esc(fmt(l.diferenca + despesaPorLoja(l.loja) + erroPorLoja(l.loja) - notasPorLoja(l.loja).dinheiro))}</td></tr>`).join('')
-    const linhasNotas = notasFiscais.map(n => `<tr><td>${esc(n.loja)}</td><td>${esc(FORMAS_PAGAMENTO_NOTA.find(f => f.valor === n.forma_pagamento)?.label)}</td><td class="num">${esc(fmt(n.valor))}</td></tr>`).join('')
-    const linhasDespesas = despesasLoja.map(d => `<tr><td>${esc(d.loja)}</td><td>${esc(d.descricao)}</td><td class="num">${esc(fmt(d.valor))}</td></tr>`).join('')
-    const linhasErros = errosCaixa.map(e => `<tr><td>${esc(e.loja)}</td><td>${esc(e.operadora)}</td><td class="num">${esc(fmt(e.valor))}</td></tr>`).join('')
-    const linhasTransf = transferenciasLista.map(t => `<tr><td>${esc(t.de)}</td><td>${esc(t.para)}</td><td class="num">${esc(fmt(t.valor))}</td></tr>`).join('') +
-      (saqueSicoobDinheiro > 0 ? `<tr><td>FAPS SICOOB</td><td>DINHEIRO (saque)</td><td class="num">${esc(fmt(saqueSicoobDinheiro))}</td></tr>` : '')
-    const linhasSaldoAntes = CONTAS_RESUMO.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldoAntesPagamentos(c)))}</td></tr>`).join('')
-    const linhasSaldoDepois = CONTAS_RESUMO.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(saldoDepoisPagamentos(c)))}</td></tr>`).join('')
-    const linhasPagPorConta = BANCOS.map(c => `<tr><td>${esc(c)}</td><td class="num">${esc(fmt(pagamentosPorConta(c)))}</td></tr>`).join('')
-    const linhasPagamentos = pagamentosCPAgrupados.map(g => `<tr class="grupo"><td colspan="10">${esc(g.conta)}</td></tr>` +
-      g.itens.map(l => `<tr${g.conta === 'Não pagar' ? ' class="naopagar"' : ''}><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${esc(l.tipo)}</td><td>${esc(l.pagar_em)}</td><td>${l.pago ? 'Pago' : '—'}</td></tr>`).join('')).join('')
-    const linhasAdiados = pagamentosAdiados.map(l => `<tr><td>${esc(l.empresa)}</td><td>${l.vencimento ? esc(new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td><td>${esc(l.fornecedor)}</td><td>${esc(l.nota)}</td><td>${esc(l.descricao)}</td><td>${esc(l.observacao)}</td><td class="num">${esc(fmt(l.valor))}</td><td>${l.redirecionado_para ? esc(new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR')) : '—'}</td></tr>`).join('')
-
-    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório financeiro — ${esc(diaSelecionado)}</title><style>${css}</style></head><body>
-      <h1>Relatório financeiro completo</h1>
-      <p>${esc(fmtData(diaSelecionado))}</p>
-
-      <h2>Saldo inicial</h2>
-      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoInicial}</tbody></table>
-
-      <h2>Conferência rede (cartão)</h2>
-      <table><thead><tr><th>Loja</th><th>Venda cartão</th><th>Recebido na rede</th><th>Taxa rede</th><th>Diferença</th></tr></thead><tbody>${linhasCartaoHtml}</tbody></table>
-
-      <h2>Conferência de dinheiro</h2>
-      <table><thead><tr><th>Loja</th><th>Venda dinheiro</th><th>Fechamento de caixa</th><th>Depósito</th><th>Conta depósito</th><th>Diferença</th></tr></thead><tbody>${linhasDinheiroHtml}</tbody></table>
-
-      ${notasFiscais.length > 0 ? `<h2>Notas fiscais</h2><table><thead><tr><th>Loja</th><th>Forma de pagamento</th><th>Valor</th></tr></thead><tbody>${linhasNotas}</tbody></table>` : ''}
-      ${despesasLoja.length > 0 ? `<h2>Despesas pagas em loja</h2><table><thead><tr><th>Loja</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>${linhasDespesas}</tbody></table>` : ''}
-      ${errosCaixa.length > 0 ? `<h2>Erros de caixa</h2><table><thead><tr><th>Loja</th><th>Operadora</th><th>Valor</th></tr></thead><tbody>${linhasErros}</tbody></table>` : ''}
-      ${(transferenciasLista.length > 0 || saqueSicoobDinheiro > 0) ? `<h2>Transferências</h2><table><thead><tr><th>De</th><th>Para</th><th>Valor</th></tr></thead><tbody>${linhasTransf}</tbody></table>` : ''}
-
-      <h2>Saldo antes dos pagamentos</h2>
-      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoAntes}<tr class="total"><td>Total</td><td class="num">${esc(fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoAntesPagamentos(c), 0)))}</td></tr></tbody></table>
-
-      <h2>Pagamentos previstos — total ${esc(fmt(total))}</h2>
-      <table><thead><tr><th>Loja</th><th>Venc.</th><th>Fornecedor</th><th>Fatura</th><th>Descrição</th><th>Observação</th><th>Valor</th><th>Tipo</th><th>Pagar em</th><th>Pago</th></tr></thead><tbody>${linhasPagamentos}</tbody></table>
-
-      ${pagamentosAdiados.length > 0 ? `<h2>Adiados</h2><table><thead><tr><th>Loja</th><th>Venc.</th><th>Fornecedor</th><th>Fatura</th><th>Descrição</th><th>Observação</th><th>Valor</th><th>Nova data</th></tr></thead><tbody>${linhasAdiados}</tbody></table>` : ''}
-
-      <h2>Pagamentos por conta</h2>
-      <table><thead><tr><th>Conta</th><th>Total</th></tr></thead><tbody>${linhasPagPorConta}<tr class="total"><td>Total</td><td class="num">${esc(fmt(BANCOS.reduce((s, c) => s + pagamentosPorConta(c), 0)))}</td></tr></tbody></table>
-
-      <h2>Saldo depois dos pagamentos</h2>
-      <table><thead><tr><th>Conta</th><th>Saldo</th></tr></thead><tbody>${linhasSaldoDepois}<tr class="total"><td>Total</td><td class="num">${esc(fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoDepoisPagamentos(c), 0)))}</td></tr></tbody></table>
-    </body></html>`
-  }
-
-  async function finalizarDia() {
-    if (!pastaOnedrive.trim()) { setErroFinalizar('Configure a pasta do OneDrive nas configurações primeiro.'); setMostrarConfig(true); return }
-    setFinalizandoDia(true)
-    setErroFinalizar('')
-    const conteudo_html = gerarRelatorioCompletoHTML()
-    const nome_arquivo = `Relatorio-${diaSelecionado}.html`
-    const { data, error } = await supabase.functions.invoke('financeiro-upload', {
-      body: { user_id: user!.id, pasta: pastaOnedrive.trim(), nome_arquivo, conteudo_html },
-    })
-    let corpoErro: any = data?.error ? data : null
-    if (error && (error as any).context?.json) {
-      try { corpoErro = await (error as any).context.json() } catch { /* ignora */ }
-    }
-    if (corpoErro || error) {
-      const codigo = corpoErro?.error
-      const mensagem = codigo === 'not_connected' ? 'Conexão com a Microsoft expirou ou não tem permissão de escrita. Reconecte nas configurações.'
-        : codigo === 'pasta_nao_encontrada' ? `Não encontrei a pasta "${pastaOnedrive}" no seu OneDrive. Crie essa pasta primeiro.`
-        : codigo ? `${codigo}${corpoErro?.details ? ' — ' + JSON.stringify(corpoErro.details).slice(0, 300) : ''}`
-        : error?.message ?? 'Erro ao salvar no OneDrive'
-      setErroFinalizar(mensagem)
-      setFinalizandoDia(false)
-      return
-    }
-    setFinalizandoDia(false)
-    setDiaFinalizado(true)
   }
 
   return (
@@ -1664,20 +1567,13 @@ export default function Financeiro() {
             </button>
           </div>
 
-          <div className="flex flex-col items-end gap-2 mt-3">
-            {erroFinalizar && (
-              <p className="text-xs text-red-600 flex items-center gap-1.5"><AlertCircle size={13} /> {erroFinalizar}</p>
-            )}
-            {diaFinalizado ? (
+          {(saldos['DIA_FINALIZADO_AUTO'] ?? 0) === 1 && (
+            <div className="flex justify-end mt-3">
               <span className="text-xs text-green-700 bg-green-100 px-3 py-2 rounded-lg flex items-center gap-1.5">
-                <CheckCircle2 size={14} /> Relatório salvo no OneDrive
+                <CheckCircle2 size={14} /> Dia finalizado automaticamente às 22h — relatório salvo no OneDrive
               </span>
-            ) : (
-              <button onClick={finalizarDia} disabled={finalizandoDia} className="btn-secondary flex items-center gap-2 disabled:opacity-50">
-                <CheckCircle2 size={16} /> {finalizandoDia ? 'Salvando no OneDrive...' : 'Finalizar o dia'}
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
 
