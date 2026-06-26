@@ -1564,6 +1564,25 @@ export default function Financeiro() {
             </div>
           )}
 
+          {/* Resumo de saldo depois dos pagamentos */}
+          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 mt-6">
+            <h2 className="text-sm font-semibold text-teal-800 mb-3 flex items-center gap-1.5">
+              <Wallet size={15} /> Saldo depois dos pagamentos
+            </h2>
+            <div className="grid grid-cols-2 gap-px bg-teal-200 rounded-lg overflow-hidden border border-teal-200">
+              {CONTAS_RESUMO.map(c => (
+                <div key={c} className="bg-white p-2.5 flex items-center justify-between text-xs gap-2">
+                  <span className="text-gray-600 truncate">{c}</span>
+                  <span className="font-medium whitespace-nowrap text-teal-700">{fmt(saldoDepoisPagamentos(c))}</span>
+                </div>
+              ))}
+              <div className="bg-teal-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2 text-teal-900">
+                <span>Total</span>
+                <span>{fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoDepoisPagamentos(c), 0))}</span>
+              </div>
+            </div>
+          </div>
+
           {/* Pagamentos por conta */}
           <div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4 mt-6">
             <h2 className="text-sm font-semibold text-orange-800 mb-3 flex items-center gap-1.5">
@@ -1585,25 +1604,6 @@ export default function Financeiro() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Resumo de saldo depois dos pagamentos */}
-          <div className="rounded-xl border border-teal-200 bg-teal-50/60 p-4 mt-6">
-            <h2 className="text-sm font-semibold text-teal-800 mb-3 flex items-center gap-1.5">
-              <Wallet size={15} /> Saldo depois dos pagamentos
-            </h2>
-            <div className="grid grid-cols-2 gap-px bg-teal-200 rounded-lg overflow-hidden border border-teal-200">
-              {CONTAS_RESUMO.map(c => (
-                <div key={c} className="bg-white p-2.5 flex items-center justify-between text-xs gap-2">
-                  <span className="text-gray-600 truncate">{c}</span>
-                  <span className="font-medium whitespace-nowrap text-teal-700">{fmt(saldoDepoisPagamentos(c))}</span>
-                </div>
-              ))}
-              <div className="bg-teal-100 p-2.5 flex items-center justify-between text-xs font-semibold col-span-2 text-teal-900">
-                <span>Total</span>
-                <span>{fmt(CONTAS_RESUMO.reduce((s, c) => s + saldoDepoisPagamentos(c), 0))}</span>
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end mt-6">
