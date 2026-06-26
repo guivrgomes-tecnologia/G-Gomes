@@ -127,6 +127,8 @@ export default function Financeiro() {
   const [abrirDespesas, setAbrirDespesas] = useState(false)
   const [abrirErros, setAbrirErros] = useState(false)
   const [dataMover, setDataMover] = useState('')
+  const [resumoDiaMover, setResumoDiaMover] = useState<{ total: number; itens: Lancamento[] } | null>(null)
+  const [carregandoResumoMover, setCarregandoResumoMover] = useState(false)
   const [conferenciaSalva, setConferenciaSalva] = useState<LinhaConferencia[] | null>(null)
   const [conferenciaPreviaCalc, setConferenciaPreviaCalc] = useState<LinhaConferencia[] | null>(null)
   const [dinheiroSalvo, setDinheiroSalvo] = useState<LinhaDinheiroEditavel[] | null>(null)
@@ -616,6 +618,20 @@ export default function Financeiro() {
     await carregarDia()
   }
 
+  async function carregarResumoDiaMover(dia: string) {
+    setCarregandoResumoMover(true)
+    const { data } = await supabase.from('financeiro_lancamentos').select('*').eq('dia', dia)
+    const itens = (data ?? []).filter((l: Lancamento) => !l.redirecionado_para)
+    const total = itens.reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0)
+    setResumoDiaMover({ total, itens })
+    setCarregandoResumoMover(false)
+  }
+
+  useEffect(() => {
+    if (!dataMover) { setResumoDiaMover(null); return }
+    carregarResumoDiaMover(dataMover)
+  }, [dataMover])
+
   async function moverParaOutroDia(original: Lancamento, novaData: string) {
     if (!original.id || !novaData) return
     await supabase.from('financeiro_lancamentos').insert({
@@ -636,6 +652,7 @@ export default function Financeiro() {
     await supabase.from('financeiro_lancamentos').update({ redirecionado_para: novaData }).eq('id', original.id)
     setMovendoId(null)
     setDataMover('')
+    setResumoDiaMover(null)
     await carregarDia()
   }
 
@@ -1549,10 +1566,39 @@ export default function Financeiro() {
                           <td className="p-2 text-center">
                             {l.id && !l.redirecionado_para && !l.importado_de_id && !fechado && (
                               movendoId === l.id ? (
-                                <div className="flex items-center gap-1">
-                                  <input type="date" className="input text-xs py-1 px-1.5 w-28" value={dataMover} onChange={e => setDataMover(e.target.value)} />
+                                <div className="relative flex items-center gap-1">
+                                  <input type="date" className="input text-xs py-1 px-1.5 w-28" value={dataMover} onChange={e => setDataMover(e.target.value)} autoFocus />
                                   <button onClick={() => moverParaOutroDia(l, dataMover)} disabled={!dataMover} className="text-green-600 hover:text-green-700 disabled:opacity-40"><CheckCircle2 size={15} /></button>
-                                  <button onClick={() => { setMovendoId(null); setDataMover('') }} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
+                                  <button onClick={() => { setMovendoId(null); setDataMover(''); setResumoDiaMover(null) }} className="text-gray-400 hover:text-red-500"><X size={15} /></button>
+                                  {dataMover && (
+                                    <div className="absolute z-20 top-full right-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left">
+                                      <p className="text-[11px] font-semibold text-gray-500 mb-1.5">
+                                        Resumo de {new Date(dataMover + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                      </p>
+                                      {carregandoResumoMover ? (
+                                        <p className="text-xs text-gray-400">Carregando...</p>
+                                      ) : (
+                                        <>
+                                          <div className="max-h-36 overflow-y-auto space-y-0.5 mb-1.5">
+                                            {(resumoDiaMover?.itens.length ?? 0) === 0 && (
+                                              <p className="text-xs text-gray-400 italic">Nenhum lançamento nesse dia.</p>
+                                            )}
+                                            {resumoDiaMover?.itens.map((it, i) => (
+                                              <div key={it.id ?? i} className="flex items-center justify-between gap-2 text-xs">
+                                                <span className="text-gray-600 truncate">{it.fornecedor}</span>
+                                                <span className="text-gray-700 font-medium whitespace-nowrap">{fmt((it.valor ?? 0) + (it.juros ?? 0))}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <div className="flex items-center justify-between border-t border-gray-100 pt-1.5">
+                                            <span className="text-xs font-semibold text-gray-700">Total no dia</span>
+                                            <span className="text-sm font-bold text-red-600">{fmt(resumoDiaMover?.total ?? 0)}</span>
+                                          </div>
+                                          <p className="text-[10px] text-gray-400 mt-1">+ {fmt((l.valor ?? 0) + (l.juros ?? 0))} deste lançamento = {fmt((resumoDiaMover?.total ?? 0) + (l.valor ?? 0) + (l.juros ?? 0))}</p>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <button onClick={() => { setMovendoId(l.id!); setDataMover('') }} title="Mover para outro dia" className="text-gray-400 hover:text-brand-600">
