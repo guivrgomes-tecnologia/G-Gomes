@@ -613,9 +613,19 @@ export default function Financeiro() {
   async function fecharDia() {
     if (!previa) return
     setFechando(true)
-    await supabase.from('financeiro_lancamentos').delete().eq('dia', diaSelecionado).eq('fechado', false)
+    // Busca os não-fechados direto do banco nesse instante, em vez de confiar no array `previa`
+    // já carregado na tela — evita fechar com base em dados desatualizados (ex.: lançamento
+    // adicionado por outra pessoa enquanto a tela estava aberta) e deixar sobra pra trás.
+    const { data: todosAtuais } = await supabase.from('financeiro_lancamentos').select('*').eq('dia', diaSelecionado).eq('fechado', false)
+    // Lançamentos já redirecionados pra outro dia não fazem mais parte dos pagamentos de hoje —
+    // fechá-los de novo só criaria uma cópia fechada duplicada e inútil. Deixa como estão.
+    const atuais = (todosAtuais ?? []).filter(l => !l.redirecionado_para)
+    const idsAtuais = atuais.map(l => l.id)
+    if (idsAtuais.length > 0) {
+      await supabase.from('financeiro_lancamentos').delete().in('id', idsAtuais)
+    }
     await supabase.from('financeiro_lancamentos').insert(
-      previa.map(({ id, criado_em, ...l }: any) => ({ ...l, dia: diaSelecionado, usuario_id: user!.id, fechado: true }))
+      atuais.map(({ id, criado_em, ...l }: any) => ({ ...l, dia: diaSelecionado, usuario_id: user!.id, fechado: true }))
     )
     setFechando(false)
     setPrevia(null)
@@ -639,17 +649,16 @@ export default function Financeiro() {
 
     // Reabre um por um em vez de um update só: se dois lançamentos tiverem a mesma identidade
     // (empresa/fornecedor/nota/vencimento) não dá pra ter os dois em aberto no mesmo dia.
-    // Se o conflito for com uma cópia importada de outro dia (importado_de_id preenchido — só uma
-    // referência, não a fonte original) OU com uma sobra de um fechamento anterior (criada antes
-    // da cópia fechada — o "fechar" devia ter apagado os não-fechados antes de criar a cópia fechada,
-    // mas pode ter falhado silenciosamente, ex.: por permissão), apaga essa sobra antes de reabrir
-    // o lançamento de verdade. Senão, deixa esse de fora e avisa pra resolver manualmente.
+    // Quando isso acontece, a cópia ABERTA já é a que representa o estado atual (pode até ter sido
+    // referenciada por um lançamento movido pra outro dia via importado_de_id) — então quem é
+    // descartado é a cópia FECHADA, que é a sobra redundante criada por engano num fechamento
+    // anterior (ex.: um lançamento que já tinha sido redirecionado, mas acabou sendo fechado de novo).
     const bloqueados: string[] = []
     for (const l of fechados) {
       const conflito = abertosPorChave.get(chave(l))
-      const ehSobraAntiga = conflito && new Date(conflito.criado_em) < new Date(l.criado_em)
-      if (conflito && (conflito.importado_de_id || ehSobraAntiga)) {
-        await supabase.from('financeiro_lancamentos').delete().eq('id', conflito.id)
+      if (conflito) {
+        await supabase.from('financeiro_lancamentos').delete().eq('id', l.id)
+        continue
       }
       const { error } = await supabase.from('financeiro_lancamentos').update({ fechado: false }).eq('id', l.id)
       if (error) {
