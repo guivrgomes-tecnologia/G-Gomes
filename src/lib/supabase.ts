@@ -98,6 +98,8 @@ export type PendenciaComentario = {
   imagem_url?: string | null
   tarefa_id?: string | null
   tarefa_texto?: string | null
+  anexo_id?: string | null
+  anexo_nome?: string | null
   resposta_a_id?: string | null
   resposta_a_autor?: string | null
   resposta_a_texto?: string | null

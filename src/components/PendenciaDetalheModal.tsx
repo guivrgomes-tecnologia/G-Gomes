@@ -53,6 +53,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
   const [novaTarefa, setNovaTarefa] = useState('')
   const [respondendoTarefa, setRespondendoTarefa] = useState<PendenciaTarefa | null>(null)
   const [respondendoComentario, setRespondendoComentario] = useState<PendenciaComentario | null>(null)
+  const [respondendoAnexo, setRespondendoAnexo] = useState<PendenciaAnexo | null>(null)
   const [novoComentario, setNovoComentario] = useState('')
   const [enviandoComentario, setEnviandoComentario] = useState(false)
   const [imagemSelecionada, setImagemSelecionada] = useState<File | null>(null)
@@ -193,6 +194,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
     await supabase.from('pendencia_comentarios').insert({
       pendencia_id: pendenciaId, autor_id: user!.id, mensagem: texto, imagem_url: imagemUrl,
       tarefa_id: respondendoTarefa?.id ?? null, tarefa_texto: respondendoTarefa?.texto ?? null,
+      anexo_id: respondendoAnexo?.id ?? null, anexo_nome: respondendoAnexo?.nome_arquivo ?? null,
       resposta_a_id: respondendoComentario?.id ?? null,
       resposta_a_autor: autorRespondido,
       resposta_a_texto: respondendoComentario ? (respondendoComentario.mensagem || '📷 Imagem') : null,
@@ -213,6 +215,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
     setNovoComentario('')
     setRespondendoTarefa(null)
     setRespondendoComentario(null)
+    setRespondendoAnexo(null)
     selecionarImagem(null)
     await carregarComentarios()
     await marcarComoLido()
@@ -383,7 +386,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                   {t.concluida ? <CheckSquare size={16} className="text-green-500" /> : <Square size={16} />}
                 </button>
                 <span className={`flex-1 text-sm ${t.concluida ? 'line-through text-gray-400' : 'text-gray-700'}`}>{t.texto}</span>
-                <button onClick={() => { setRespondendoTarefa(t); setRespondendoComentario(null) }} title="Responder esta tarefa no chat"
+                <button onClick={() => { setRespondendoTarefa(t); setRespondendoComentario(null); setRespondendoAnexo(null) }} title="Responder esta tarefa no chat"
                   className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all">
                   <Reply size={13} />
                 </button>
@@ -422,6 +425,10 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                   </a>
                   <span className="text-[10px] text-gray-400 whitespace-nowrap">{formatTamanhoArquivo(a.tamanho)}</span>
                   <span className="text-[10px] text-gray-400 whitespace-nowrap hidden sm:inline">{autor?.nome?.split(' ')[0] ?? ''}</span>
+                  <button onClick={() => { setRespondendoAnexo(a); setRespondendoTarefa(null); setRespondendoComentario(null) }} title="Responder este documento no chat"
+                    className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all shrink-0">
+                    <Reply size={13} />
+                  </button>
                   <a href={a.url} target="_blank" rel="noopener noreferrer" download
                     className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all shrink-0">
                     <Download size={13} />
@@ -500,7 +507,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                 return (
                   <div key={c.id} className={`flex items-start gap-1 group ${souEu ? 'justify-end' : 'justify-start'}`}>
                     {souEu && (
-                      <button onClick={() => { setRespondendoComentario(c); setRespondendoTarefa(null) }} title="Responder esta mensagem"
+                      <button onClick={() => { setRespondendoComentario(c); setRespondendoTarefa(null); setRespondendoAnexo(null) }} title="Responder esta mensagem"
                         className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all shrink-0 mt-2 order-first">
                         <Reply size={13} />
                       </button>
@@ -517,6 +524,12 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                         <div className={`flex items-center gap-1.5 rounded-lg px-2 py-1 mb-1.5 border-l-2 ${souEu ? 'bg-white/15 border-white/50' : 'bg-white border-brand-400'}`}>
                           <CheckSquare size={11} className={souEu ? 'text-white/70 shrink-0' : 'text-brand-500 shrink-0'} />
                           <p className={`text-xs truncate ${souEu ? 'text-white/80' : 'text-gray-500'}`}>{c.tarefa_texto}</p>
+                        </div>
+                      )}
+                      {c.anexo_nome && (
+                        <div className={`flex items-center gap-1.5 rounded-lg px-2 py-1 mb-1.5 border-l-2 ${souEu ? 'bg-white/15 border-white/50' : 'bg-white border-brand-400'}`}>
+                          <Paperclip size={11} className={souEu ? 'text-white/70 shrink-0' : 'text-brand-500 shrink-0'} />
+                          <p className={`text-xs truncate ${souEu ? 'text-white/80' : 'text-gray-500'}`}>{c.anexo_nome}</p>
                         </div>
                       )}
                       {c.imagem_url && (
@@ -537,7 +550,7 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                       </div>
                     </div>
                     {!souEu && (
-                      <button onClick={() => { setRespondendoComentario(c); setRespondendoTarefa(null) }} title="Responder esta mensagem"
+                      <button onClick={() => { setRespondendoComentario(c); setRespondendoTarefa(null); setRespondendoAnexo(null) }} title="Responder esta mensagem"
                         className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-brand-600 transition-all shrink-0 mt-2">
                         <Reply size={13} />
                       </button>
@@ -567,6 +580,16 @@ export default function PendenciaDetalheModal({ pendenciaId, onClose, onEditar, 
                   <p className={`text-xs truncate ${respondendoTarefa.concluida ? 'line-through text-gray-400' : 'text-gray-600'}`}>{respondendoTarefa.texto}</p>
                 </div>
                 <button onClick={() => setRespondendoTarefa(null)} className="text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
+              </div>
+            )}
+            {respondendoAnexo && (
+              <div className="flex items-center gap-2 bg-gray-50 border-l-2 border-brand-500 rounded-lg px-2.5 py-1.5 mb-2">
+                <Paperclip size={13} className="text-brand-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-semibold text-brand-600">Respondendo ao documento</p>
+                  <p className="text-xs truncate text-gray-600">{respondendoAnexo.nome_arquivo}</p>
+                </div>
+                <button onClick={() => setRespondendoAnexo(null)} className="text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
               </div>
             )}
             {imagemPreview && (
