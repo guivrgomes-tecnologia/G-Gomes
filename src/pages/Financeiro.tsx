@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff } from 'lucide-react'
+import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff, CalendarDays } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { calcularConferenciaCartao, calcularConferenciaDinheiro, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
@@ -892,9 +892,15 @@ export default function Financeiro() {
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
           <p className="text-sm text-gray-400">Contas a pagar com vencimento no dia, vindas da planilha</p>
         </div>
-        <button onClick={() => setMostrarConfig(true)} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <Settings size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/financeiro')} title="Ver calendário"
+            className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-1.5">
+            <CalendarDays size={14} /> Calendário
+          </button>
+          <button onClick={() => setMostrarConfig(true)} className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <Settings size={18} />
+          </button>
+        </div>
       </div>
 
       {!conectado ? (
