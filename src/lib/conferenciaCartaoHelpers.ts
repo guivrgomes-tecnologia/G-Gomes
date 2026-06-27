@@ -79,6 +79,35 @@ async function calcularVendaCartaoPorLoja(file: File, diaISO: string): Promise<M
   return resultado
 }
 
+// Mesma fonte e mesma coluna de valor do cartão (H/"valor"), só muda o filtro de descrição.
+// O PIX cai direto na conta (quase sempre FAPS SICOOB), por isso é somado pra verificar o saldo
+// inicial do dia seguinte: saldo de ontem + pix de ontem deveria bater com o saldo de hoje.
+async function calcularVendaPixPorLoja(file: File, diaISO: string): Promise<Map<number, number>> {
+  const linhas = await lerAba(file, 'Dados')
+  const diaBR = paraDDMMYYYY(diaISO)
+  const resultado = new Map<number, number>()
+
+  for (const row of linhas) {
+    const codloja = Number(row[0])
+    if (!Number.isFinite(codloja) || codloja <= 0) continue
+    const dataRow = row[1]
+    const dataISORow = dataParaISO(dataRow)
+    const bateData = dataISORow === diaISO || String(dataRow).trim() === diaBR
+    if (!bateData) continue
+    const descricao = String(row[6] ?? '').trim().toUpperCase()
+    if (!descricao.includes('PIX')) continue
+    const valor = Number(row[7])
+    if (!Number.isFinite(valor)) continue
+    resultado.set(codloja, (resultado.get(codloja) ?? 0) + valor)
+  }
+  return resultado
+}
+
+export async function calcularVendaPixTotal(file: File, diaISO: string): Promise<number> {
+  const porLoja = await calcularVendaPixPorLoja(file, diaISO)
+  return Array.from(porLoja.values()).reduce((s, v) => s + v, 0)
+}
+
 // Relatório da operadora Rede ("Filtro Rede"): data do recebimento, data original da venda, data original de vencimento,
 // valor bruto da parcela original, valor bruto da parcela atualizada, taxa MDR, valor MDR descontado, valor líquido da parcela, ...,
 // nome do estabelecimento(15), estabelecimento(16)

@@ -4,7 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff, CalendarDays, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { calcularConferenciaCartao, calcularConferenciaDinheiro, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
+import { calcularConferenciaCartao, calcularConferenciaDinheiro, calcularVendaPixTotal, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
+import { calcularSaldoDepoisPagamentos, buscarNotasPixDoDia } from '../lib/saldoDiaHelper'
 import { sincronizarLancamentos } from '../lib/financeiroSyncHelper'
 
 type LinhaDinheiroEditavel = LinhaDinheiro & { fechamentoCaixa: number; diferenca: number; deposito: number; contaDeposito: string }
@@ -146,6 +147,11 @@ export default function Financeiro() {
   const [calculandoConferencia, setCalculandoConferencia] = useState(false)
   const [arrastandoSobre, setArrastandoSobre] = useState<'sistema' | 'rede' | null>(null)
   const [erroConferencia, setErroConferencia] = useState('')
+  const [vendaPixPreviaCalc, setVendaPixPreviaCalc] = useState<number | null>(null)
+  const [vendaPixSalva, setVendaPixSalva] = useState<number | null>(null)
+  const [saldoEsperadoOntem, setSaldoEsperadoOntem] = useState<number | null>(null)
+  const [notasPixOntem, setNotasPixOntem] = useState(0)
+  const [carregandoVerificacaoSaldo, setCarregandoVerificacaoSaldo] = useState(false)
   const [notasFiscais, setNotasFiscais] = useState<NotaFiscal[]>([])
   const [novaNota, setNovaNota] = useState<{ loja: string; valor: string; forma_pagamento: NotaFiscal['forma_pagamento'] }>({
     loja: LOJAS_CARTAO[0].nome, valor: '', forma_pagamento: 'credito',
@@ -162,7 +168,7 @@ export default function Financeiro() {
 
   useEffect(() => { carregarConfig(); carregarFeriados() }, [])
   useEffect(() => {
-    carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa(); carregarDinheiroGuardado()
+    carregarDia(); carregarSaldos(); carregarConferencia(); carregarNotasFiscais(); carregarDespesasLoja(); carregarErrosCaixa(); carregarDinheiroGuardado(); carregarVerificacaoSaldo()
   }, [diaSelecionado])
 
   useEffect(() => {
@@ -293,9 +299,11 @@ export default function Financeiro() {
     setArquivoSistema(null)
     setArquivoRede(null)
     setErroConferencia('')
-    const [{ data: cartao }, { data: dinheiro }] = await Promise.all([
+    setVendaPixPreviaCalc(null)
+    const [{ data: cartao }, { data: dinheiro }, { data: pix }] = await Promise.all([
       supabase.from('financeiro_conferencia_cartao').select('*').eq('dia', diaSelecionado),
       supabase.from('financeiro_conferencia_dinheiro').select('*').eq('dia', diaSelecionado),
+      supabase.from('financeiro_venda_pix').select('valor').eq('dia', somarDias(diaSelecionado, -1)).maybeSingle(),
     ])
     if (cartao && cartao.length > 0) {
       setConferenciaSalva(cartao.map(r => ({ loja: r.loja, vendaCartao: r.venda_cartao, recebidoRede: r.recebido_rede, taxaRede: r.taxa_rede, diferenca: r.diferenca })))
@@ -307,6 +315,19 @@ export default function Financeiro() {
     } else {
       setDinheiroSalvo(null)
     }
+    setVendaPixSalva(pix?.valor ?? null)
+  }
+
+  async function carregarVerificacaoSaldo() {
+    setCarregandoVerificacaoSaldo(true)
+    const diaVenda = somarDias(diaSelecionado, -1)
+    const [saldoOntem, notasPix] = await Promise.all([
+      calcularSaldoDepoisPagamentos(diaVenda, ['FAPS SICOOB', 'FAPS ITAU']),
+      buscarNotasPixDoDia(diaVenda),
+    ])
+    setSaldoEsperadoOntem((saldoOntem['FAPS SICOOB'] ?? 0) + (saldoOntem['FAPS ITAU'] ?? 0))
+    setNotasPixOntem(notasPix)
+    setCarregandoVerificacaoSaldo(false)
   }
 
   async function calcularConferencia() {
@@ -315,10 +336,12 @@ export default function Financeiro() {
     setErroConferencia('')
     try {
       const diaVenda = somarDias(diaSelecionado, -1)
-      const [linhasCartao, linhasDinheiro] = await Promise.all([
+      const [linhasCartao, linhasDinheiro, totalPix] = await Promise.all([
         calcularConferenciaCartao(arquivoSistema, arquivoRede, diaVenda),
         calcularConferenciaDinheiro(arquivoSistema, diaVenda),
+        calcularVendaPixTotal(arquivoSistema, diaVenda),
       ])
+      setVendaPixPreviaCalc(totalPix)
       setConferenciaPreviaCalc(linhasCartao)
       setDinheiroPreviaCalc(linhasDinheiro.map(l => ({ ...l, fechamentoCaixa: 0, diferenca: 0 - l.vendaDinheiro, deposito: 0, contaDeposito: LOJAS_CARTAO.find(lj => lj.nome === l.loja)?.contaDepositoPadrao ?? 'FAPS ITAU' })))
     } catch (err) {
@@ -411,6 +434,13 @@ export default function Financeiro() {
         }))
       )
     }
+    const totalPix = vendaPixSalva ?? vendaPixPreviaCalc
+    if (totalPix != null) {
+      await supabase.from('financeiro_venda_pix').upsert(
+        { dia: somarDias(diaSelecionado, -1), valor: totalPix, usuario_id: user!.id },
+        { onConflict: 'dia' }
+      )
+    }
     await supabase.from('financeiro_saldos').upsert(
       { dia: diaSelecionado, campo: 'CONFERENCIA_CARTAO_FECHADA', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
       { onConflict: 'dia,campo' }
@@ -421,6 +451,7 @@ export default function Financeiro() {
     setConferenciaPreviaCalc(null)
     setDinheiroPreviaCalc(null)
     await carregarConferencia()
+    await carregarVerificacaoSaldo()
   }
 
   async function fecharConferenciaDinheiro() {
@@ -453,6 +484,13 @@ export default function Financeiro() {
         })))
       }
     }
+    const totalPix = vendaPixSalva ?? vendaPixPreviaCalc
+    if (totalPix != null) {
+      await supabase.from('financeiro_venda_pix').upsert(
+        { dia: somarDias(diaSelecionado, -1), valor: totalPix, usuario_id: user!.id },
+        { onConflict: 'dia' }
+      )
+    }
     await supabase.from('financeiro_saldos').upsert(
       { dia: diaSelecionado, campo: 'CONFERENCIA_DINHEIRO_FECHADA', valor: 1, usuario_id: user!.id, updated_at: new Date().toISOString() },
       { onConflict: 'dia,campo' }
@@ -460,6 +498,7 @@ export default function Financeiro() {
     setSaldos(prev => ({ ...prev, CONFERENCIA_DINHEIRO_FECHADA: 1 }))
     setDinheiroPreviaCalc(null)
     await carregarConferencia()
+    await carregarVerificacaoSaldo()
   }
 
   async function reabrirConferenciaCartao() {
@@ -1046,6 +1085,43 @@ export default function Financeiro() {
                   onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
               </div>
             </div>
+
+            {/* Verificação do saldo inicial: a soma do PIX de ontem (sistema + notas) deveria ser exatamente
+                a diferença entre (saldo inicial hoje) e (saldo final de ontem), somando FAPS ITAU + FAPS SICOOB
+                juntas — assim não importa pra qual das duas o PIX caiu, o total bate igual. */}
+            {(() => {
+              const vendaPix = vendaPixSalva ?? vendaPixPreviaCalc
+              if (carregandoVerificacaoSaldo) {
+                return <p className="text-xs text-orange-600 mt-3">Calculando verificação do saldo...</p>
+              }
+              if (saldoEsperadoOntem == null) return null
+              const pixTotal = (vendaPix ?? 0) + notasPixOntem
+              const saldoInicialHoje = (saldos['FAPS SICOOB'] ?? 0) + (saldos['FAPS ITAU'] ?? 0)
+              const diferencaSaldo = saldoInicialHoje - saldoEsperadoOntem
+              const bateu = Math.abs(diferencaSaldo - pixTotal) < 1
+              return (
+                <div className={`mt-3 rounded-lg border p-3 ${bateu ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <p className={`text-xs font-semibold mb-1.5 flex items-center gap-1.5 ${bateu ? 'text-green-700' : 'text-red-700'}`}>
+                    {bateu ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                    Verificação do saldo inicial (FAPS ITAU + FAPS SICOOB) {bateu ? '— bateu' : '— não bateu'}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-gray-600">
+                    <div><span className="block text-gray-400">Saldo final de ontem</span><span className="font-medium text-gray-700">{fmt(saldoEsperadoOntem)}</span></div>
+                    <div><span className="block text-gray-400">Saldo inicial hoje</span><span className="font-medium text-gray-700">{fmt(saldoInicialHoje)}</span></div>
+                    <div><span className="block text-gray-400">Diferença entre os dois</span><span className="font-medium text-gray-700">{fmt(diferencaSaldo)}</span></div>
+                    <div>
+                      <span className="block text-gray-400">Pix de ontem (sistema + notas)</span>
+                      <span className="font-medium text-gray-700">{vendaPix != null ? fmt(pixTotal) : '— calcule a conferência'}</span>
+                    </div>
+                  </div>
+                  {!bateu && (
+                    <p className="text-[11px] text-red-600 mt-1.5">
+                      A diferença de saldo ({fmt(diferencaSaldo)}) não bate com o total de pix de ontem ({fmt(pixTotal)}) — sobrou {fmt(Math.abs(diferencaSaldo - pixTotal))} sem explicação.
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
           </div>
 
           {/* Conferência de cartão (Rede) */}
