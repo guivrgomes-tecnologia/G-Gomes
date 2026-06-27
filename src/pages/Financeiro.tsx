@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff, CalendarDays } from 'lucide-react'
+import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, ChevronLeft, ChevronRight, ChevronDown, Plus, CreditCard, Upload, Banknote, Printer, FileText, Receipt, Wallet, AlertTriangle, CalendarOff, CalendarDays, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { calcularConferenciaCartao, calcularConferenciaDinheiro, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
@@ -70,6 +70,7 @@ type Lancamento = {
   fechado?: boolean
   redirecionado_para?: string | null
   aprovado?: boolean
+  origem_manual?: boolean
 }
 
 const BANCOS = ['FAPS ITAU', 'FAPS SICOOB', 'G GOMES SICOOB', 'TS SICOOB', 'PESSOAL BRADESCO', 'PESSOAL ITAU', 'DINHEIRO']
@@ -695,6 +696,13 @@ export default function Financeiro() {
     setSalvandoNovo(false)
     setShowNovoLancamento(false)
     setNovoLancamento({ empresa: '', fornecedor: '', nota: '', descricao: '', valor: '', tipo: '', pagar_em: '' })
+    await carregarDia()
+  }
+
+  async function deletarLancamento(l: Lancamento) {
+    if (!l.id) return
+    if (!confirm(`Apagar o lançamento "${l.empresa ?? l.fornecedor}"? Essa ação não pode ser desfeita.`)) return
+    await supabase.from('financeiro_lancamentos').delete().eq('id', l.id)
     await carregarDia()
   }
 
@@ -1580,14 +1588,24 @@ export default function Financeiro() {
                       <th className="text-center p-2"></th>
                     </tr></thead>
                     <tbody>
-                      {(listaExibidaOrdenada ?? []).map((l, i) => (
-                        <tr key={l.id ?? i} className={`border-t border-gray-100 ${l.redirecionado_para ? 'bg-gray-50 text-gray-400' : l.pago ? 'bg-green-50' : i % 2 === 0 ? 'bg-emerald-50/40' : 'bg-white'}`}>
-                          <td className={`p-2 whitespace-nowrap font-medium ${l.redirecionado_para ? 'line-through' : ''}`} title={l.descricao ?? ''}>{l.empresa}</td>
+                      {(listaExibidaOrdenada ?? []).map((l, i) => {
+                        const efetivamentePago = !!l.pago || !!l.pagamento
+                        return (
+                        <tr key={l.id ?? i} className={`border-t border-gray-100 ${l.redirecionado_para ? 'bg-gray-50 text-gray-400' : efetivamentePago ? 'bg-green-100/70 border-l-4 border-l-green-500' : i % 2 === 0 ? 'bg-emerald-50/40' : 'bg-white'}`}>
+                          <td className={`p-2 whitespace-nowrap font-medium ${l.redirecionado_para ? 'line-through' : efetivamentePago ? 'text-green-800' : ''}`} title={l.descricao ?? ''}>
+                            {efetivamentePago && <CheckCircle2 size={13} className="inline mr-1 -mt-0.5 text-green-600" />}
+                            {l.empresa}
+                          </td>
                           <td className={`p-2 whitespace-nowrap ${l.redirecionado_para ? 'line-through' : ''}`}>
                             {l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
                             {l.importado_de_dia && (
                               <span className="ml-1.5 text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full whitespace-nowrap" title={`Importado do dia ${l.importado_de_dia}`}>
                                 importado
+                              </span>
+                            )}
+                            {l.origem_manual && (
+                              <span className="ml-1.5 text-[10px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full whitespace-nowrap" title="Adicionado manualmente pelo app, não vem da planilha">
+                                manual
                               </span>
                             )}
                             {l.redirecionado_para && (
@@ -1635,7 +1653,8 @@ export default function Financeiro() {
                           <td className="p-2 text-center">
                             {l.id ? (
                               <div className="flex flex-col items-center gap-0.5">
-                                <input type="checkbox" className="accent-green-600 w-4 h-4" checked={!!l.pago}
+                                <input type="checkbox" className="accent-green-600 w-5 h-5 border-2 border-green-600 rounded"
+                                  checked={!!l.pago || !!l.pagamento} disabled={!!l.pagamento}
                                   onChange={e => atualizarCampo(l.id!, 'pago', e.target.checked)} />
                                 {l.pagamento && (
                                   <span className="text-[9px] text-green-700 bg-green-100 px-1 rounded whitespace-nowrap" title="Data de pagamento informada na planilha">
@@ -1646,6 +1665,11 @@ export default function Financeiro() {
                             ) : <span className="text-gray-300">—</span>}
                           </td>
                           <td className="p-2 text-center">
+                            {l.id && l.origem_manual && !fechado && movendoId !== l.id && (
+                              <button onClick={() => deletarLancamento(l)} title="Apagar lançamento" className="text-gray-400 hover:text-red-500 mr-1">
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                             {l.id && !l.redirecionado_para && !l.importado_de_id && !fechado && (
                               movendoId === l.id ? (
                                 <div className="relative flex items-center gap-1">
@@ -1690,7 +1714,7 @@ export default function Financeiro() {
                             )}
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -1852,7 +1876,7 @@ export default function Financeiro() {
                     <td colSpan={10} className={`p-1 border border-gray-300 font-bold uppercase text-center ${cor.headerText}`}>{grupo.conta}</td>
                   </tr>
                   {grupo.itens.map((l, i) => (
-                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' || l.pago ? 'line-through text-gray-400' : ''}`}>
+                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' || l.pago || l.pagamento ? 'line-through text-gray-400' : ''}`}>
                       <td className="p-1 border border-gray-300 text-center">{l.empresa}</td>
                       <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                       <td className="p-1 border border-gray-300 text-center">{l.fornecedor}</td>
@@ -1935,7 +1959,7 @@ export default function Financeiro() {
               <div className="space-y-2">
                 {lancamentosImportar.map(l => (
                   <div key={l.id} className="flex items-center gap-2 text-xs border border-gray-200 rounded-lg px-3 py-2">
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${l.pago ? 'bg-green-500' : 'bg-gray-300'}`} title={l.pago ? 'Pago' : 'Não pago'} />
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${l.pago || l.pagamento ? 'bg-green-500' : 'bg-gray-300'}`} title={l.pago || l.pagamento ? 'Pago' : 'Não pago'} />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{l.empresa} — {l.fornecedor}</p>
                       <p className="text-gray-400 truncate">{l.nota} · vencimento {l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</p>
