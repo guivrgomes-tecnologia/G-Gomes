@@ -86,6 +86,19 @@ function parseValorBR(valor: string): number {
 
 const fmt = (v: number | null) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string | null) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
+// Algumas faturas vêm da planilha como data (a célula foi formatada como data por engano) — o Excel
+// guarda isso como um número serial (dias desde 1899-12-30). Detecta esse padrão e mostra mês/ano
+// em vez do número cru.
+function fmtNota(nota: string | null | undefined): string {
+  if (!nota) return ''
+  const texto = String(nota).trim()
+  if (!/^\d{4,6}$/.test(texto)) return texto
+  const serial = Number(texto)
+  const ms = (serial - 25569) * 86400 * 1000
+  const d = new Date(ms)
+  if (isNaN(d.getTime()) || d.getUTCFullYear() < 2000 || d.getUTCFullYear() > 2100) return texto
+  return d.toLocaleDateString('pt-BR', { month: '2-digit', year: 'numeric', timeZone: 'UTC' })
+}
 function hojeYYYYMMDD() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -1746,7 +1759,7 @@ export default function Financeiro() {
                             )}
                           </td>
                           <td className={`p-2 whitespace-nowrap ${l.redirecionado_para ? 'line-through' : ''}`}>{l.fornecedor}</td>
-                          <td className={`p-2 whitespace-nowrap ${l.redirecionado_para ? 'line-through' : ''}`} title={l.observacao ?? ''}>{l.nota}</td>
+                          <td className={`p-2 whitespace-nowrap ${l.redirecionado_para ? 'line-through' : ''}`} title={l.observacao ?? ''}>{fmtNota(l.nota)}</td>
                           <td className="p-2 text-right whitespace-nowrap font-medium">
                             {l.id ? (
                               <input type="text" inputMode="decimal" disabled={!!fechado} className="no-spin w-24 text-right border border-gray-200 rounded px-1.5 py-1 text-xs bg-white focus:outline-none focus:border-brand-400 disabled:bg-gray-100 disabled:text-gray-500"
@@ -2011,7 +2024,7 @@ export default function Financeiro() {
                       <td className="p-1 border border-gray-300 text-center">{l.empresa}</td>
                       <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                       <td className="p-1 border border-gray-300 text-center">{l.fornecedor}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.nota}</td>
+                      <td className="p-1 border border-gray-300 text-center">{fmtNota(l.nota)}</td>
                       <td className="p-1 border border-gray-300 text-center">{l.descricao}</td>
                       <td className="p-1 border border-gray-300 text-center">{l.observacao}</td>
                       <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
@@ -2054,7 +2067,7 @@ export default function Financeiro() {
                       <td className="p-1.5 border border-gray-300 text-center">{l.empresa}</td>
                       <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
                       <td className="p-1.5 border border-gray-300 text-center">{l.fornecedor}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.nota}</td>
+                      <td className="p-1.5 border border-gray-300 text-center">{fmtNota(l.nota)}</td>
                       <td className="p-1.5 border border-gray-300 text-center">{l.descricao}</td>
                       <td className="p-1.5 border border-gray-300 text-center">{l.observacao}</td>
                       <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
@@ -2093,7 +2106,7 @@ export default function Financeiro() {
                     <span className={`w-2 h-2 rounded-full shrink-0 ${l.pago || l.pagamento ? 'bg-green-500' : 'bg-gray-300'}`} title={l.pago || l.pagamento ? 'Pago' : 'Não pago'} />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{l.empresa} — {l.fornecedor}</p>
-                      <p className="text-gray-400 truncate">{l.nota} · vencimento {l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</p>
+                      <p className="text-gray-400 truncate">{fmtNota(l.nota)} · vencimento {l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</p>
                     </div>
                     <span className="font-medium whitespace-nowrap">{fmt(l.valor)}</span>
                     <button onClick={() => importarLancamento(l)} className="btn-secondary text-xs px-2.5 py-1.5 whitespace-nowrap">Importar</button>

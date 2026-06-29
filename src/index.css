@@ -46,6 +46,11 @@
   body.modo-impressao-cp #root {
     display: none !important;
   }
+  /* Por padrão o navegador ignora cor de fundo na impressão — força manter (cabeçalhos coloridos, faixas de transferência, etc.) */
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
 }
 
 .caixa-caneta {
