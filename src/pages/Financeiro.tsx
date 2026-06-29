@@ -1925,159 +1925,174 @@ export default function Financeiro() {
       )}
 
       {showCP && createPortal(
-        <div className="fixed inset-0 bg-white z-[200] overflow-y-auto p-6 print:static print:inset-auto print:overflow-visible print:p-0 print:h-auto print:w-auto">
-          <div className="flex items-center justify-between mb-6 print:hidden">
-            <h1 className="text-xl font-bold text-gray-900">CP do dia — {fmtData(diaSelecionado)}</h1>
-            <div className="flex gap-2">
-              <button onClick={() => window.print()} className="btn-primary flex items-center gap-2">
-                <Printer size={16} /> Imprimir / Salvar PDF
-              </button>
-              <button onClick={() => setShowCP(false)} className="btn-secondary flex items-center gap-2">
-                <X size={16} /> Fechar
-              </button>
+        <div className="fixed inset-0 bg-gray-50 z-[200] overflow-y-auto print:static print:inset-auto print:overflow-visible print:bg-white">
+          <div className="max-w-[1400px] mx-auto p-6 sm:p-8 print:p-0 print:max-w-none">
+            <div className="flex items-center justify-between mb-7 pb-5 border-b border-gray-200 print:hidden">
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">CP do dia</h1>
+                <p className="text-sm text-gray-500 capitalize mt-0.5">{fmtData(diaSelecionado)}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => window.print()} className="btn-primary flex items-center gap-2">
+                  <Printer size={16} /> Imprimir / Salvar PDF
+                </button>
+                <button onClick={() => setShowCP(false)} className="btn-secondary flex items-center gap-2">
+                  <X size={16} /> Fechar
+                </button>
+              </div>
             </div>
+
+            <div className="hidden print:block mb-5">
+              <h1 className="text-xl font-bold text-gray-900 capitalize">CP — {fmtData(diaSelecionado)}</h1>
+            </div>
+
+            {/* Transferências (inclui o recebido na rede de cada loja, direto para a FAPS SICOOB) */}
+            {transferenciasLista.length > 0 && (
+              <section className="mb-8">
+                <h2 className="text-[11px] font-semibold text-gray-500 mb-2.5 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-1.5 h-3.5 rounded-sm bg-blue-400" /> Transferências
+                </h2>
+                <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                  <table className="min-w-full text-[11px]">
+                    <thead><tr className="bg-gray-50 text-gray-500">
+                      <th className="text-left px-3 py-2 font-medium border-b border-gray-200">De</th>
+                      <th className="text-left px-3 py-2 font-medium border-b border-gray-200">Para</th>
+                      <th className="text-right px-3 py-2 font-medium border-b border-gray-200">Valor</th>
+                      <th className="text-center px-3 py-2 font-medium border-b border-gray-200 w-10">✓</th>
+                      <th className="text-left px-3 py-2 font-medium border-b border-l border-gray-200">De</th>
+                      <th className="text-left px-3 py-2 font-medium border-b border-gray-200">Para</th>
+                      <th className="text-right px-3 py-2 font-medium border-b border-gray-200">Valor</th>
+                      <th className="text-center px-3 py-2 font-medium border-b border-gray-200 w-10">✓</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(() => {
+                        const pares: (typeof transferenciasLista[number] | null)[][] = []
+                        for (let i = 0; i < transferenciasLista.length; i += 2) pares.push([transferenciasLista[i], transferenciasLista[i + 1] ?? null])
+                        return pares.map((par, i) => (
+                          <tr key={i}>
+                            {par.map((t, j) => {
+                              if (!t) return (
+                                <Fragment key={j}>
+                                  <td className={`px-3 py-2 ${j === 1 ? 'border-l border-gray-100' : ''}`} />
+                                  <td className="px-3 py-2" />
+                                  <td className="px-3 py-2" />
+                                  <td className="px-3 py-2" />
+                                </Fragment>
+                              )
+                              const cor = corConta(t.de)
+                              return (
+                                <Fragment key={j}>
+                                  <td className={`px-3 py-2 ${cor.bg} ${j === 1 ? 'border-l border-gray-100' : ''}`}>
+                                    <span className={`inline-flex items-center gap-1.5 font-semibold ${cor.text}`}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${cor.bar}`} />{t.de}
+                                    </span>
+                                  </td>
+                                  <td className={`px-3 py-2 ${cor.bg} ${cor.text}`}>{t.para}</td>
+                                  <td className={`px-3 py-2 text-right font-medium ${cor.bg} ${cor.text}`}>{fmt(t.valor)}</td>
+                                  <td className={`px-3 py-2 text-center ${cor.bg}`}><span className="caixa-caneta" /></td>
+                                </Fragment>
+                              )
+                            })}
+                          </tr>
+                        ))
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {/* Pagamentos previstos */}
+            <section className="mb-8">
+              <h2 className="text-[11px] font-semibold text-gray-500 mb-2.5 uppercase tracking-wider flex items-center gap-2">
+                <span className="w-1.5 h-3.5 rounded-sm bg-slate-500" /> Pagamentos previstos
+              </h2>
+              <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                <table className="min-w-full text-[11px]">
+                  <thead><tr className="bg-gray-50 text-gray-500">
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Loja</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Venc.</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Fornecedor</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Fatura</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Descrição</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Observação</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Valor</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Tipo</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200">Pagar em</th>
+                    <th className="text-center px-2.5 py-2 font-medium border-b border-gray-200 w-12">Incluído</th>
+                  </tr></thead>
+                  <tbody>
+                    {pagamentosCPAgrupados.map(grupo => {
+                      const cor = corConta(grupo.conta)
+                      return (
+                      <Fragment key={grupo.conta}>
+                        <tr className={cor.headerBg}>
+                          <td colSpan={10} className={`px-2.5 py-1.5 font-semibold uppercase text-center tracking-wide ${cor.headerText}`}>{grupo.conta}</td>
+                        </tr>
+                        {grupo.itens.map((l, i) => (
+                          <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} border-b border-gray-100 last:border-b-0 ${grupo.conta === 'Não pagar' || l.pago || l.pagamento ? 'line-through text-gray-400' : ''}`}>
+                            <td className="px-2.5 py-1.5 text-center">{l.empresa}</td>
+                            <td className="px-2.5 py-1.5 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                            <td className="px-2.5 py-1.5 text-center">{l.fornecedor}</td>
+                            <td className="px-2.5 py-1.5 text-center">{fmtNota(l.nota)}</td>
+                            <td className="px-2.5 py-1.5 text-center">{l.descricao}</td>
+                            <td className="px-2.5 py-1.5 text-center">{l.observacao}</td>
+                            <td className="px-2.5 py-1.5 text-center whitespace-nowrap">{fmt(l.valor)}</td>
+                            <td className="px-2.5 py-1.5 text-center">{l.tipo}</td>
+                            <td className="px-2.5 py-1.5 text-center">{l.pagar_em}</td>
+                            <td className="px-2.5 py-1.5 text-center">
+                              {l.id && (
+                                <input type="checkbox" className="accent-green-600 w-4 h-4 print:hidden" checked={!!l.aprovado}
+                                  onChange={e => atualizarAprovado(l.id!, e.target.checked)} />
+                              )}
+                              <span className="caixa-caneta hidden print:inline-block" />
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* Adiados: lançamentos movidos para outro dia — sem dados de pagamento, só lançamento + nova data */}
+            {pagamentosAdiados.length > 0 && (
+              <section className="mb-8">
+                <h2 className="text-[11px] font-semibold text-gray-500 mb-2.5 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-1.5 h-3.5 rounded-sm bg-red-400" /> Adiados
+                </h2>
+                <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+                  <table className="min-w-full text-[11px]">
+                    <thead><tr className="bg-red-50/70 text-red-700">
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Loja</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Venc.</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Fornecedor</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Fatura</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Descrição</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Observação</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Valor</th>
+                      <th className="text-center px-2.5 py-2 font-medium border-b border-red-100">Nova data</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {pagamentosAdiados.map((l, i) => (
+                        <tr key={l.id ?? `adiado-${i}`}>
+                          <td className="px-2.5 py-1.5 text-center">{l.empresa}</td>
+                          <td className="px-2.5 py-1.5 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                          <td className="px-2.5 py-1.5 text-center">{l.fornecedor}</td>
+                          <td className="px-2.5 py-1.5 text-center">{fmtNota(l.nota)}</td>
+                          <td className="px-2.5 py-1.5 text-center">{l.descricao}</td>
+                          <td className="px-2.5 py-1.5 text-center">{l.observacao}</td>
+                          <td className="px-2.5 py-1.5 text-center whitespace-nowrap">{fmt(l.valor)}</td>
+                          <td className="px-2.5 py-1.5 text-center whitespace-nowrap font-semibold text-red-700 bg-red-50">{l.redirecionado_para ? new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
-
-          <h1 className="hidden print:block text-xl font-bold text-gray-900 mb-4 capitalize">CP — {fmtData(diaSelecionado)}</h1>
-
-          {/* Transferências (inclui o recebido na rede de cada loja, direto para a FAPS SICOOB) */}
-          {transferenciasLista.length > 0 && (
-            <>
-              <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
-                <span className="w-1.5 h-4 rounded bg-blue-400" /> Transferências
-              </h2>
-              <table className="min-w-full text-[10px] border border-gray-300 mb-6">
-                <thead><tr className="bg-gray-100">
-                  <th className="text-left p-1.5 border border-gray-300">De</th>
-                  <th className="text-left p-1.5 border border-gray-300">Para</th>
-                  <th className="text-right p-1.5 border border-gray-300">Valor</th>
-                  <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
-                  <th className="text-left p-1.5 border border-gray-300">De</th>
-                  <th className="text-left p-1.5 border border-gray-300">Para</th>
-                  <th className="text-right p-1.5 border border-gray-300">Valor</th>
-                  <th className="text-center p-1.5 border border-gray-300 w-10">✓</th>
-                </tr></thead>
-                <tbody>
-                  {(() => {
-                    const pares: (typeof transferenciasLista[number] | null)[][] = []
-                    for (let i = 0; i < transferenciasLista.length; i += 2) pares.push([transferenciasLista[i], transferenciasLista[i + 1] ?? null])
-                    return pares.map((par, i) => (
-                      <tr key={i}>
-                        {par.map((t, j) => {
-                          if (!t) return (
-                            <Fragment key={j}>
-                              <td className="p-1.5 border border-gray-300" />
-                              <td className="p-1.5 border border-gray-300" />
-                              <td className="p-1.5 border border-gray-300" />
-                              <td className="p-1.5 border border-gray-300" />
-                            </Fragment>
-                          )
-                          const cor = corConta(t.de)
-                          return (
-                            <Fragment key={j}>
-                              <td className={`p-1.5 border border-gray-300 ${cor.bg}`}>
-                                <span className={`inline-flex items-center gap-1 font-semibold ${cor.text}`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${cor.bar}`} />{t.de}
-                                </span>
-                              </td>
-                              <td className={`p-1.5 border border-gray-300 ${cor.bg} ${cor.text}`}>{t.para}</td>
-                              <td className={`p-1.5 border border-gray-300 text-right font-medium ${cor.bg} ${cor.text}`}>{fmt(t.valor)}</td>
-                              <td className={`p-1.5 border border-gray-300 text-center ${cor.bg}`}><span className="caixa-caneta" /></td>
-                            </Fragment>
-                          )
-                        })}
-                      </tr>
-                    ))
-                  })()}
-                </tbody>
-              </table>
-            </>
-          )}
-
-          {/* Pagamentos previstos */}
-          <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
-            <span className="w-1.5 h-4 rounded bg-slate-500" /> Pagamentos previstos
-          </h2>
-          <table className="min-w-full text-[10px] border border-gray-300 mb-6">
-            <thead><tr className="bg-gray-100">
-              <th className="text-center p-1 border border-gray-300">Loja</th>
-              <th className="text-center p-1 border border-gray-300">Venc.</th>
-              <th className="text-center p-1 border border-gray-300">Fornecedor</th>
-              <th className="text-center p-1 border border-gray-300">Fatura</th>
-              <th className="text-center p-1 border border-gray-300">Descrição</th>
-              <th className="text-center p-1 border border-gray-300">Observação</th>
-              <th className="text-center p-1 border border-gray-300">Valor</th>
-              <th className="text-center p-1 border border-gray-300">Tipo</th>
-              <th className="text-center p-1 border border-gray-300">Pagar em</th>
-              <th className="text-center p-1 border border-gray-300 w-12">Incluído</th>
-            </tr></thead>
-            <tbody>
-              {pagamentosCPAgrupados.map(grupo => {
-                const cor = corConta(grupo.conta)
-                return (
-                <Fragment key={grupo.conta}>
-                  <tr className={cor.headerBg}>
-                    <td colSpan={10} className={`p-1 border border-gray-300 font-bold uppercase text-center ${cor.headerText}`}>{grupo.conta}</td>
-                  </tr>
-                  {grupo.itens.map((l, i) => (
-                    <tr key={l.id ?? `${grupo.conta}-${i}`} className={`${cor.bg} ${grupo.conta === 'Não pagar' || l.pago || l.pagamento ? 'line-through text-gray-400' : ''}`}>
-                      <td className="p-1 border border-gray-300 text-center">{l.empresa}</td>
-                      <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.fornecedor}</td>
-                      <td className="p-1 border border-gray-300 text-center">{fmtNota(l.nota)}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.descricao}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.observacao}</td>
-                      <td className="p-1 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.tipo}</td>
-                      <td className="p-1 border border-gray-300 text-center">{l.pagar_em}</td>
-                      <td className="p-1 border border-gray-300 text-center">
-                        {l.id && (
-                          <input type="checkbox" className="accent-green-600 w-4 h-4 print:hidden" checked={!!l.aprovado}
-                            onChange={e => atualizarAprovado(l.id!, e.target.checked)} />
-                        )}
-                        <span className="caixa-caneta hidden print:inline-block" />
-                      </td>
-                    </tr>
-                  ))}
-                </Fragment>
-              )})}
-            </tbody>
-          </table>
-
-          {/* Adiados: lançamentos movidos para outro dia — sem dados de pagamento, só lançamento + nova data */}
-          {pagamentosAdiados.length > 0 && (
-            <>
-              <h2 className="text-sm font-bold text-gray-800 mt-4 mb-2 uppercase flex items-center gap-2">
-                <span className="w-1.5 h-4 rounded bg-red-400" /> Adiados
-              </h2>
-              <table className="min-w-full text-sm border border-gray-300 mb-6">
-                <thead><tr className="bg-red-50">
-                  <th className="text-center p-1.5 border border-gray-300">Loja</th>
-                  <th className="text-center p-1.5 border border-gray-300">Venc.</th>
-                  <th className="text-center p-1.5 border border-gray-300">Fornecedor</th>
-                  <th className="text-center p-1.5 border border-gray-300">Fatura</th>
-                  <th className="text-center p-1.5 border border-gray-300">Descrição</th>
-                  <th className="text-center p-1.5 border border-gray-300">Observação</th>
-                  <th className="text-center p-1.5 border border-gray-300">Valor</th>
-                  <th className="text-center p-1.5 border border-gray-300 text-red-700">Nova data</th>
-                </tr></thead>
-                <tbody>
-                  {pagamentosAdiados.map((l, i) => (
-                    <tr key={l.id ?? `adiado-${i}`}>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.empresa}</td>
-                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{l.vencimento ? new Date(l.vencimento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.fornecedor}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{fmtNota(l.nota)}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.descricao}</td>
-                      <td className="p-1.5 border border-gray-300 text-center">{l.observacao}</td>
-                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap">{fmt(l.valor)}</td>
-                      <td className="p-1.5 border border-gray-300 text-center whitespace-nowrap font-semibold text-red-700 bg-red-50">{l.redirecionado_para ? new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
         </div>,
         document.body
       )}
