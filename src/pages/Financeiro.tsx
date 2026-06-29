@@ -821,6 +821,14 @@ export default function Financeiro() {
     carregarResumoDiaMover(dataMover)
   }, [dataMover])
 
+  async function cancelarRedirecionamento(original: Lancamento) {
+    if (!original.id || !original.redirecionado_para) return
+    if (!confirm(`Trazer "${original.empresa ?? original.fornecedor}" de volta pra ${fmtData(diaSelecionado)}?`)) return
+    await supabase.from('financeiro_lancamentos').delete().eq('importado_de_id', original.id).eq('dia', original.redirecionado_para)
+    await supabase.from('financeiro_lancamentos').update({ redirecionado_para: null }).eq('id', original.id)
+    await carregarDia()
+  }
+
   async function moverParaOutroDia(original: Lancamento, novaData: string) {
     if (!original.id || !novaData) return
     await supabase.from('financeiro_lancamentos').insert({
@@ -1726,8 +1734,14 @@ export default function Financeiro() {
                               </span>
                             )}
                             {l.redirecionado_para && (
-                              <span className="ml-1.5 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full whitespace-nowrap no-underline inline-block">
+                              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full whitespace-nowrap no-underline">
                                 → {new Date(l.redirecionado_para + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                {!fechado && (
+                                  <button onClick={() => cancelarRedirecionamento(l)} title="Cancelar e trazer de volta pra hoje"
+                                    className="text-purple-500 hover:text-purple-800 no-underline">
+                                    <X size={10} />
+                                  </button>
+                                )}
                               </span>
                             )}
                           </td>
