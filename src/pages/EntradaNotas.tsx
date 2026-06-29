@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Upload, Trash2, FileText, AlertCircle } from 'lucide-react'
+import { Upload, Trash2, FileText, AlertCircle, Plus, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -83,6 +83,12 @@ export default function EntradaNotas() {
   const [erro, setErro] = useState('')
   const [arrastando, setArrastando] = useState(false)
   const [editBuffer, setEditBuffer] = useState<Record<string, string>>({})
+  const [showManual, setShowManual] = useState(false)
+  const [salvandoManual, setSalvandoManual] = useState(false)
+  const [erroManual, setErroManual] = useState('')
+  const [formManual, setFormManual] = useState({
+    razao_social: '', loja: '', fornecedor: '', numero_nota: '', emitida_em: '', chave_acesso: '', valor_total: '',
+  })
 
   useEffect(() => { carregar() }, [])
 
@@ -123,6 +129,38 @@ export default function EntradaNotas() {
     await carregar()
   }
 
+  async function salvarManual() {
+    if (!formManual.razao_social.trim() || !formManual.fornecedor.trim() || !formManual.valor_total.trim()) {
+      setErroManual('Preencha pelo menos razão social, fornecedor e valor total.')
+      return
+    }
+    setSalvandoManual(true)
+    setErroManual('')
+    const chave = formManual.chave_acesso.trim() || null
+    if (chave) {
+      const { data: existente } = await supabase.from('entrada_notas_fiscais').select('id').eq('chave_acesso', chave).maybeSingle()
+      if (existente) {
+        setErroManual('Já existe uma nota com essa chave de acesso.')
+        setSalvandoManual(false)
+        return
+      }
+    }
+    await supabase.from('entrada_notas_fiscais').insert({
+      razao_social: formManual.razao_social.trim(),
+      loja: formManual.loja || null,
+      fornecedor: formManual.fornecedor.trim(),
+      numero_nota: formManual.numero_nota.trim() || null,
+      emitida_em: formManual.emitida_em || null,
+      chave_acesso: chave,
+      valor_total: parseValorBR(formManual.valor_total),
+      usuario_id: user!.id,
+    })
+    setSalvandoManual(false)
+    setShowManual(false)
+    setFormManual({ razao_social: '', loja: '', fornecedor: '', numero_nota: '', emitida_em: '', chave_acesso: '', valor_total: '' })
+    await carregar()
+  }
+
   async function atualizarCampo(id: string, campo: 'data_recebimento' | 'entregue_por' | 'valor_adiantamento' | 'loja', valor: string) {
     const valorSalvo = campo === 'valor_adiantamento' ? parseValorBR(valor) : (valor.trim() || null)
     setNotas(prev => prev.map(n => n.id === id ? { ...n, [campo]: valorSalvo } : n))
@@ -150,9 +188,14 @@ export default function EntradaNotas() {
 
   return (
     <div className="p-4 sm:p-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Entrada de Notas</h1>
-        <p className="text-sm text-gray-400">Anexe o XML das notas de entrada e controle a chegada de cada uma no escritório</p>
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Entrada de Notas</h1>
+          <p className="text-sm text-gray-400">Anexe o XML das notas de entrada e controle a chegada de cada uma no escritório</p>
+        </div>
+        <button onClick={() => setShowManual(true)} className="btn-secondary flex items-center gap-2 text-sm shrink-0">
+          <Plus size={15} /> Lançar manualmente
+        </button>
       </div>
 
       {/* Upload de XML */}
@@ -167,7 +210,7 @@ export default function EntradaNotas() {
         className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl px-4 py-8 mb-6 cursor-pointer transition-colors text-center ${arrastando ? 'border-brand-500 bg-brand-50' : 'border-gray-300 hover:bg-gray-50'}`}>
         <Upload size={24} className="text-gray-400" />
         <p className="text-sm text-gray-600 font-medium">{enviando ? 'Processando...' : 'Arraste os XMLs aqui ou clique para escolher'}</p>
-        <p className="text-xs text-gray-400">Pode soltar vários arquivos de uma vez</p>
+        <p className="text-xs text-gray-400">Pode soltar vários arquivos de uma vez. Se não tiver o XML, use "Lançar manualmente".</p>
         <input type="file" accept=".xml" multiple className="hidden" disabled={enviando}
           onChange={e => { if (e.target.files?.length) processarArquivos(e.target.files); e.target.value = '' }} />
       </label>
@@ -273,6 +316,66 @@ export default function EntradaNotas() {
             </table>
           </div>
         </>
+      )}
+
+      {showManual && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowManual(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2"><Plus size={18} /> Lançar nota manualmente</h3>
+              <button onClick={() => setShowManual(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">Use quando não tiver o XML da nota. Recebimento, entregue por e adiantamento dá pra preencher depois, direto na lista.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Razão social (minha empresa) *</label>
+                <input className="input text-sm" value={formManual.razao_social} onChange={e => setFormManual(f => ({ ...f, razao_social: e.target.value }))} autoFocus />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Loja</label>
+                  <select className="input text-sm" value={formManual.loja} onChange={e => setFormManual(f => ({ ...f, loja: e.target.value }))}>
+                    <option value="">—</option>
+                    {LOJAS_OPCOES.map(l => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Número da nota</label>
+                  <input className="input text-sm" value={formManual.numero_nota} onChange={e => setFormManual(f => ({ ...f, numero_nota: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Fornecedor *</label>
+                <input className="input text-sm" value={formManual.fornecedor} onChange={e => setFormManual(f => ({ ...f, fornecedor: e.target.value }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Emitida em</label>
+                  <input type="date" className="input text-sm" value={formManual.emitida_em} onChange={e => setFormManual(f => ({ ...f, emitida_em: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Valor total *</label>
+                  <input type="text" inputMode="decimal" className="no-spin input text-sm text-right" placeholder="0,00" value={formManual.valor_total} onChange={e => setFormManual(f => ({ ...f, valor_total: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Chave de acesso (opcional)</label>
+                <input className="input text-sm" value={formManual.chave_acesso} onChange={e => setFormManual(f => ({ ...f, chave_acesso: e.target.value }))} />
+              </div>
+            </div>
+            {erroManual && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3 flex items-center gap-1.5">
+                <AlertCircle size={13} className="shrink-0" /> {erroManual}
+              </p>
+            )}
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowManual(false)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={salvarManual} disabled={salvandoManual} className="btn-primary flex-1">
+                {salvandoManual ? 'Salvando...' : 'Lançar nota'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
