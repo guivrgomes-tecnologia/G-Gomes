@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, Trash2, ChevronLeft, TrendingUp, TrendingDown, Pencil, Check, Lock, Unlock } from 'lucide-react'
+import { Plus, X, Trash2, ChevronLeft, TrendingUp, TrendingDown, Pencil, Check, Lock, Unlock, List, BarChart3 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import BarChart from '../components/BarChart'
 
 type MetaMes = { id: string; mes: string; titulo: string; observacoes: string | null; criado_por: string; created_at: string }
 type MetaSemana = { id: string; mes_id: string; label: string; ordem: number }
@@ -44,6 +45,7 @@ export default function Metas() {
   const [saving, setSaving] = useState(false)
   const [linhasDestrancadas, setLinhasDestrancadas] = useState<Record<string, boolean>>({})
   const [semanaSelecionada, setSemanaSelecionada] = useState<string | null>(null)
+  const [modoVisao, setModoVisao] = useState<'tabela' | 'grafico'>('tabela')
   const [renomeandoSemana, setRenomeandoSemana] = useState<string | null>(null)
   const [editBuffer, setEditBuffer] = useState<Record<string, string>>({})
 
@@ -300,6 +302,33 @@ export default function Metas() {
         </div>
       </div>
 
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center bg-gray-100 rounded-lg p-1">
+          <button onClick={() => setModoVisao('tabela')} title="Tabela"
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors ${modoVisao === 'tabela' ? 'bg-white shadow-sm text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+            <List size={14} /> Tabela
+          </button>
+          <button onClick={() => setModoVisao('grafico')} title="Gráfico"
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors ${modoVisao === 'grafico' ? 'bg-white shadow-sm text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>
+            <BarChart3 size={14} /> Gráfico
+          </button>
+        </div>
+      </div>
+
+      {modoVisao === 'grafico' ? (
+        <div className="card p-4 sm:p-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Meta do mês x Total realizado, por loja</h3>
+          <BarChart
+            labels={lojas.map(l => l.nome.replace(/\s*\(Loja \d+\)/i, ''))}
+            series={[
+              { name: 'Meta do mês', color: '#9ca3af', values: lojas.map(l => l.meta_mes) },
+              { name: 'Total realizado', color: '#10b981', values: lojas.map(l => totalRealLoja(l.id)) },
+            ]}
+            formatValue={v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 })}
+          />
+        </div>
+      ) : (
+      <>
       {/* Seletor de semana */}
       <div className="flex items-center gap-1.5 mb-4 flex-wrap">
         {semanas.map(sem => {
@@ -546,6 +575,8 @@ export default function Metas() {
         </table>
       </div>
       <p className="text-xs text-gray-400 mt-2">Editando: <span className="font-medium text-gray-600">{semanas.find(s => s.id === semanaSelecionada)?.label}</span>. Selecione outra semana acima para editá-la.</p>
+      </>
+      )}
 
       {showNovaLoja && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowNovaLoja(false)}>

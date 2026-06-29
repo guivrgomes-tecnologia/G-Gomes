@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, Trash2, TrendingUp, TrendingDown, List, Grid3x3 } from 'lucide-react'
+import { Plus, X, Trash2, TrendingUp, TrendingDown, List, Grid3x3, BarChart3 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import BarChart from '../components/BarChart'
 
 type VendaLoja = { id: string; nome: string; ordem: number }
 type VendaRegistro = {
@@ -34,7 +35,7 @@ function parseValorBR(valor: string): number {
 
 export default function Historico() {
   const { user } = useAuth()
-  const [view, setView] = useState<'mensal' | 'anual'>('mensal')
+  const [view, setView] = useState<'mensal' | 'anual' | 'grafico'>('mensal')
   const [lojas, setLojas] = useState<VendaLoja[]>([])
   const [registros, setRegistros] = useState<VendaRegistro[]>([])
   const [anos, setAnos] = useState<number[]>([])
@@ -165,6 +166,10 @@ export default function Historico() {
             <button onClick={() => setView('anual')} title="Visão anual"
               className={`p-1.5 rounded-lg transition-colors ${view === 'anual' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
               <Grid3x3 size={15} />
+            </button>
+            <button onClick={() => setView('grafico')} title="Gráfico"
+              className={`p-1.5 rounded-lg transition-colors ${view === 'grafico' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+              <BarChart3 size={15} />
             </button>
           </div>
           <button onClick={() => setShowNovoAno(true)} className="btn-primary flex items-center gap-2 text-sm">
@@ -373,7 +378,7 @@ export default function Historico() {
             </table>
           </div>
         </>
-      ) : (
+      ) : view === 'anual' ? (
         /* VISÃO ANUAL: loja x ano (totais) */
         <>
         <p className="text-xs text-gray-400 mb-1.5 sm:hidden">← Arraste a tabela para o lado para ver mais →</p>
@@ -411,6 +416,42 @@ export default function Historico() {
             </tfoot>
           </table>
         </div>
+        </>
+      ) : (
+        /* VISÃO GRÁFICO */
+        <>
+          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+            {anos.map(a => (
+              <button key={a} onClick={() => setAnoAtivo(a)}
+                className={`text-sm py-1.5 px-3.5 rounded-lg border font-medium transition-colors ${a === anoAtivo ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-brand-300'}`}>
+                {a}
+              </button>
+            ))}
+          </div>
+
+          <div className="card p-4 sm:p-6 mb-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Total da rede por mês — {anoAtivo}{anoAtivo ? ` x ${anoAtivo - 1}` : ''}</h3>
+            <BarChart
+              labels={MESES.map(m => m.label)}
+              series={[
+                ...(anos.includes((anoAtivo ?? 0) - 1) ? [{
+                  name: String((anoAtivo ?? 0) - 1), color: '#d1d5db',
+                  values: MESES.map(m => lojas.reduce((s, l) => { const r = registroDe(l.id, (anoAtivo ?? 0) - 1); return s + ((r?.[m.key] as number) ?? 0) }, 0)),
+                }] : []),
+                { name: String(anoAtivo ?? ''), color: '#3b82f6', values: MESES.map(m => totalPorMes(m.key)) },
+              ]}
+              formatValue={v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 })}
+            />
+          </div>
+
+          <div className="card p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">Total do ano por loja — {anoAtivo}</h3>
+            <BarChart
+              labels={lojasDoAno.map(l => l.nome)}
+              series={[{ name: String(anoAtivo ?? ''), color: '#10b981', values: lojasDoAno.map(l => totalRegistro(registroDe(l.id, anoAtivo!)!)) }]}
+              formatValue={v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 })}
+            />
+          </div>
         </>
       )}
 

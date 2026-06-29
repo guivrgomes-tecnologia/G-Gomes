@@ -5,7 +5,7 @@ import { Landmark, Link2, AlertCircle, Lock, Eye, CheckCircle2, Settings, X, Che
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { calcularConferenciaCartao, calcularConferenciaDinheiro, calcularVendaPixTotal, LinhaConferencia, LinhaDinheiro, LOJAS_CARTAO } from '../lib/conferenciaCartaoHelpers'
-import { calcularSaldoDepoisPagamentos, buscarNotasPixDoDia } from '../lib/saldoDiaHelper'
+import { calcularSaldoDepoisPagamentos, buscarNotasPixDosDias } from '../lib/saldoDiaHelper'
 import { sincronizarLancamentos } from '../lib/financeiroSyncHelper'
 
 type LinhaDinheiroEditavel = LinhaDinheiro & { fechamentoCaixa: number; diferenca: number; deposito: number; contaDeposito: string }
@@ -94,6 +94,25 @@ function somarDias(dataISO: string, n: number) {
   const d = new Date(dataISO + 'T12:00:00')
   d.setDate(d.getDate() + n)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function ehFimDeSemana(dataISO: string): boolean {
+  const diaSemana = new Date(dataISO + 'T12:00:00').getDay()
+  return diaSemana === 0 || diaSemana === 6
+}
+// Último dia em que o banco efetivamente moveu dinheiro antes de `dia` — pula fins de semana e feriados.
+// Numa segunda-feira, isso é sexta; se sexta for feriado, vai pro dia útil anterior a ela.
+function diaUtilAnterior(dia: string, feriados: Set<string>): string {
+  let atual = somarDias(dia, -1)
+  while (ehFimDeSemana(atual) || feriados.has(atual)) atual = somarDias(atual, -1)
+  return atual
+}
+// Todos os dias "pulados" entre o último dia útil e hoje (fim de semana, feriado) — as vendas desses
+// dias (ex.: sábado) ainda precisam ser somadas no pix, mesmo que o saldo bancário só reflita na sexta.
+function diasNaoUteisEntre(diaUtil: string, dia: string): string[] {
+  const dias: string[] = []
+  let atual = somarDias(diaUtil, 1)
+  while (atual < dia) { dias.push(atual); atual = somarDias(atual, 1) }
+  return dias
 }
 
 export default function Financeiro() {
@@ -303,7 +322,7 @@ export default function Financeiro() {
     const [{ data: cartao }, { data: dinheiro }, { data: pix }] = await Promise.all([
       supabase.from('financeiro_conferencia_cartao').select('*').eq('dia', diaSelecionado),
       supabase.from('financeiro_conferencia_dinheiro').select('*').eq('dia', diaSelecionado),
-      supabase.from('financeiro_venda_pix').select('valor').eq('dia', somarDias(diaSelecionado, -1)).maybeSingle(),
+      supabase.from('financeiro_venda_pix').select('valor').eq('dia', diaSelecionado).maybeSingle(),
     ])
     if (cartao && cartao.length > 0) {
       setConferenciaSalva(cartao.map(r => ({ loja: r.loja, vendaCartao: r.venda_cartao, recebidoRede: r.recebido_rede, taxaRede: r.taxa_rede, diferenca: r.diferenca })))
@@ -318,12 +337,21 @@ export default function Financeiro() {
     setVendaPixSalva(pix?.valor ?? null)
   }
 
+  // Dias cujo PIX precisa ser somado pra verificar o saldo inicial de `diaSelecionado`: o último dia
+  // útil anterior (cujo "saldo depois dos pagamentos" nunca incluiu o próprio pix dele) + qualquer fim
+  // de semana/feriado pulado no meio (ex.: sábado, que tem venda mas nenhum saldo digitado pra ele).
+  function diasParaVerificarPix(): string[] {
+    const diaUtil = diaUtilAnterior(diaSelecionado, feriados)
+    return [diaUtil, ...diasNaoUteisEntre(diaUtil, diaSelecionado)]
+  }
+
   async function carregarVerificacaoSaldo() {
     setCarregandoVerificacaoSaldo(true)
-    const diaVenda = somarDias(diaSelecionado, -1)
+    const diaUtil = diaUtilAnterior(diaSelecionado, feriados)
+    const dias = diasParaVerificarPix()
     const [saldoOntem, notasPix] = await Promise.all([
-      calcularSaldoDepoisPagamentos(diaVenda, ['FAPS SICOOB', 'FAPS ITAU']),
-      buscarNotasPixDoDia(diaVenda),
+      calcularSaldoDepoisPagamentos(diaUtil, ['FAPS SICOOB', 'FAPS ITAU']),
+      buscarNotasPixDosDias(dias),
     ])
     setSaldoEsperadoOntem((saldoOntem['FAPS SICOOB'] ?? 0) + (saldoOntem['FAPS ITAU'] ?? 0))
     setNotasPixOntem(notasPix)
@@ -339,7 +367,7 @@ export default function Financeiro() {
       const [linhasCartao, linhasDinheiro, totalPix] = await Promise.all([
         calcularConferenciaCartao(arquivoSistema, arquivoRede, diaVenda),
         calcularConferenciaDinheiro(arquivoSistema, diaVenda),
-        calcularVendaPixTotal(arquivoSistema, diaVenda),
+        calcularVendaPixTotal(arquivoSistema, diasParaVerificarPix()),
       ])
       setVendaPixPreviaCalc(totalPix)
       setConferenciaPreviaCalc(linhasCartao)
@@ -437,7 +465,7 @@ export default function Financeiro() {
     const totalPix = vendaPixSalva ?? vendaPixPreviaCalc
     if (totalPix != null) {
       await supabase.from('financeiro_venda_pix').upsert(
-        { dia: somarDias(diaSelecionado, -1), valor: totalPix, usuario_id: user!.id },
+        { dia: diaSelecionado, valor: totalPix, usuario_id: user!.id },
         { onConflict: 'dia' }
       )
     }
@@ -487,7 +515,7 @@ export default function Financeiro() {
     const totalPix = vendaPixSalva ?? vendaPixPreviaCalc
     if (totalPix != null) {
       await supabase.from('financeiro_venda_pix').upsert(
-        { dia: somarDias(diaSelecionado, -1), valor: totalPix, usuario_id: user!.id },
+        { dia: diaSelecionado, valor: totalPix, usuario_id: user!.id },
         { onConflict: 'dia' }
       )
     }
@@ -1095,6 +1123,8 @@ export default function Financeiro() {
                 return <p className="text-xs text-orange-600 mt-3">Calculando verificação do saldo...</p>
               }
               if (saldoEsperadoOntem == null) return null
+              const diaUtil = diaUtilAnterior(diaSelecionado, feriados)
+              const diasPix = diasParaVerificarPix()
               const pixTotal = (vendaPix ?? 0) + notasPixOntem
               const saldoInicialHoje = (saldos['FAPS SICOOB'] ?? 0) + (saldos['FAPS ITAU'] ?? 0)
               const diferencaSaldo = saldoInicialHoje - saldoEsperadoOntem
@@ -1105,12 +1135,16 @@ export default function Financeiro() {
                     {bateu ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
                     Verificação do saldo inicial (FAPS ITAU + FAPS SICOOB) {bateu ? '— bateu' : '— não bateu'}
                   </p>
+                  <p className="text-[10px] text-gray-400 mb-1.5">
+                    Referência: {new Date(diaUtil + 'T12:00:00').toLocaleDateString('pt-BR')}
+                    {diasPix.length > 1 ? ` (pix somado de ${diasPix.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')).join(', ')})` : ''}
+                  </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-gray-600">
-                    <div><span className="block text-gray-400">Saldo final de ontem</span><span className="font-medium text-gray-700">{fmt(saldoEsperadoOntem)}</span></div>
+                    <div><span className="block text-gray-400">Saldo final de {new Date(diaUtil + 'T12:00:00').toLocaleDateString('pt-BR')}</span><span className="font-medium text-gray-700">{fmt(saldoEsperadoOntem)}</span></div>
                     <div><span className="block text-gray-400">Saldo inicial hoje</span><span className="font-medium text-gray-700">{fmt(saldoInicialHoje)}</span></div>
                     <div><span className="block text-gray-400">Diferença entre os dois</span><span className="font-medium text-gray-700">{fmt(diferencaSaldo)}</span></div>
                     <div>
-                      <span className="block text-gray-400">Pix de ontem (sistema + notas)</span>
+                      <span className="block text-gray-400">Pix do período (sistema + notas)</span>
                       <span className="font-medium text-gray-700">{vendaPix != null ? fmt(pixTotal) : '— calcule a conferência'}</span>
                     </div>
                   </div>

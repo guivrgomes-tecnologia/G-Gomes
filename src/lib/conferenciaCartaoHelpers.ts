@@ -82,9 +82,12 @@ async function calcularVendaCartaoPorLoja(file: File, diaISO: string): Promise<M
 // Mesma fonte e mesma coluna de valor do cartão (H/"valor"), só muda o filtro de descrição.
 // O PIX cai direto na conta (quase sempre FAPS SICOOB), por isso é somado pra verificar o saldo
 // inicial do dia seguinte: saldo de ontem + pix de ontem deveria bater com o saldo de hoje.
-async function calcularVendaPixPorLoja(file: File, diaISO: string): Promise<Map<number, number>> {
+// Aceita mais de um dia porque, depois de um fim de semana/feriado, é preciso somar a venda de
+// todos os dias "pulados" (ex.: sábado), não só do último dia útil.
+async function calcularVendaPixPorLoja(file: File, diasISO: string[]): Promise<Map<number, number>> {
   const linhas = await lerAba(file, 'Dados')
-  const diaBR = paraDDMMYYYY(diaISO)
+  const diasBR = new Set(diasISO.map(paraDDMMYYYY))
+  const diasSet = new Set(diasISO)
   const resultado = new Map<number, number>()
 
   for (const row of linhas) {
@@ -92,7 +95,7 @@ async function calcularVendaPixPorLoja(file: File, diaISO: string): Promise<Map<
     if (!Number.isFinite(codloja) || codloja <= 0) continue
     const dataRow = row[1]
     const dataISORow = dataParaISO(dataRow)
-    const bateData = dataISORow === diaISO || String(dataRow).trim() === diaBR
+    const bateData = (dataISORow != null && diasSet.has(dataISORow)) || diasBR.has(String(dataRow).trim())
     if (!bateData) continue
     const descricao = String(row[6] ?? '').trim().toUpperCase()
     if (!descricao.includes('PIX')) continue
@@ -103,8 +106,8 @@ async function calcularVendaPixPorLoja(file: File, diaISO: string): Promise<Map<
   return resultado
 }
 
-export async function calcularVendaPixTotal(file: File, diaISO: string): Promise<number> {
-  const porLoja = await calcularVendaPixPorLoja(file, diaISO)
+export async function calcularVendaPixTotal(file: File, diasISO: string[]): Promise<number> {
+  const porLoja = await calcularVendaPixPorLoja(file, diasISO)
   return Array.from(porLoja.values()).reduce((s, v) => s + v, 0)
 }
 

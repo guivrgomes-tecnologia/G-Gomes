@@ -64,7 +64,8 @@ export async function calcularSaldoDepoisPagamentos(dia: string, contas: string[
   return resultado
 }
 
-export async function buscarNotasPixDoDia(dia: string): Promise<number> {
-  const { data } = await supabase.from('financeiro_notas_fiscais').select('valor').eq('dia', dia).eq('forma_pagamento', 'pix')
+export async function buscarNotasPixDosDias(dias: string[]): Promise<number> {
+  if (dias.length === 0) return 0
+  const { data } = await supabase.from('financeiro_notas_fiscais').select('valor').in('dia', dias).eq('forma_pagamento', 'pix')
   return (data ?? []).reduce((s, n) => s + n.valor, 0)
 }
