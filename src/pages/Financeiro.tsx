@@ -363,11 +363,14 @@ export default function Financeiro() {
     setCalculandoConferencia(true)
     setErroConferencia('')
     try {
-      const diaVenda = somarDias(diaSelecionado, -1)
+      // Mesma lista de dias usada na verificação do pix: numa segunda-feira isso cobre
+      // sexta + sábado + domingo, não só o dia literalmente anterior (que pode ter sido
+      // um dia sem vendas, como domingo).
+      const diasVenda = diasParaVerificarPix()
       const [linhasCartao, linhasDinheiro, totalPix] = await Promise.all([
-        calcularConferenciaCartao(arquivoSistema, arquivoRede, diaVenda),
-        calcularConferenciaDinheiro(arquivoSistema, diaVenda),
-        calcularVendaPixTotal(arquivoSistema, diasParaVerificarPix()),
+        calcularConferenciaCartao(arquivoSistema, arquivoRede, diasVenda),
+        calcularConferenciaDinheiro(arquivoSistema, diasVenda),
+        calcularVendaPixTotal(arquivoSistema, diasVenda),
       ])
       setVendaPixPreviaCalc(totalPix)
       setConferenciaPreviaCalc(linhasCartao)
@@ -1123,36 +1126,29 @@ export default function Financeiro() {
                 return <p className="text-xs text-orange-600 mt-3">Calculando verificação do saldo...</p>
               }
               if (saldoEsperadoOntem == null) return null
-              const diaUtil = diaUtilAnterior(diaSelecionado, feriados)
-              const diasPix = diasParaVerificarPix()
               const pixTotal = (vendaPix ?? 0) + notasPixOntem
               const saldoInicialHoje = (saldos['FAPS SICOOB'] ?? 0) + (saldos['FAPS ITAU'] ?? 0)
               const diferencaSaldo = saldoInicialHoje - saldoEsperadoOntem
-              const bateu = Math.abs(diferencaSaldo - pixTotal) < 1
+              const sobra = diferencaSaldo - pixTotal
+              const bateu = Math.abs(sobra) < 1
+              const passou = !bateu && sobra > 0
+              const cor = bateu ? 'green' : passou ? 'yellow' : 'red'
+              const corClasses = {
+                green: 'bg-green-50 border-green-200 text-green-700',
+                yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+                red: 'bg-red-50 border-red-200 text-red-700',
+              }[cor]
               return (
-                <div className={`mt-3 rounded-lg border p-3 ${bateu ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <p className={`text-xs font-semibold mb-1.5 flex items-center gap-1.5 ${bateu ? 'text-green-700' : 'text-red-700'}`}>
+                <div className={`mt-3 rounded-lg border p-3 ${corClasses}`}>
+                  <p className="text-xs font-semibold mb-1.5 flex items-center gap-1.5">
                     {bateu ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                    Verificação do saldo inicial (FAPS ITAU + FAPS SICOOB) {bateu ? '— bateu' : '— não bateu'}
+                    Verificação do saldo inicial (FAPS ITAU + FAPS SICOOB) {bateu ? '— bateu' : passou ? '— passou' : '— faltou'}
                   </p>
-                  <p className="text-[10px] text-gray-400 mb-1.5">
-                    Referência: {new Date(diaUtil + 'T12:00:00').toLocaleDateString('pt-BR')}
-                    {diasPix.length > 1 ? ` (pix somado de ${diasPix.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')).join(', ')})` : ''}
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-gray-600">
-                    <div><span className="block text-gray-400">Saldo final de {new Date(diaUtil + 'T12:00:00').toLocaleDateString('pt-BR')}</span><span className="font-medium text-gray-700">{fmt(saldoEsperadoOntem)}</span></div>
-                    <div><span className="block text-gray-400">Saldo inicial hoje</span><span className="font-medium text-gray-700">{fmt(saldoInicialHoje)}</span></div>
-                    <div><span className="block text-gray-400">Diferença entre os dois</span><span className="font-medium text-gray-700">{fmt(diferencaSaldo)}</span></div>
-                    <div>
-                      <span className="block text-gray-400">Pix do período (sistema + notas)</span>
-                      <span className="font-medium text-gray-700">{vendaPix != null ? fmt(pixTotal) : '— calcule a conferência'}</span>
-                    </div>
+                  <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <div><span className="block opacity-70">Saldo inicial hoje</span><span className="font-semibold">{fmt(saldoInicialHoje)}</span></div>
+                    <div><span className="block opacity-70">Pix esperado</span><span className="font-semibold">{vendaPix != null ? fmt(pixTotal) : '— calcule a conferência'}</span></div>
+                    <div><span className="block opacity-70">Diferença</span><span className="font-semibold">{fmt(sobra)}</span></div>
                   </div>
-                  {!bateu && (
-                    <p className="text-[11px] text-red-600 mt-1.5">
-                      A diferença de saldo ({fmt(diferencaSaldo)}) não bate com o total de pix de ontem ({fmt(pixTotal)}) — sobrou {fmt(Math.abs(diferencaSaldo - pixTotal))} sem explicação.
-                    </p>
-                  )}
                 </div>
               )
             })()}
@@ -1161,7 +1157,14 @@ export default function Financeiro() {
           {/* Conferência de cartão (Rede) */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 mb-6">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="text-sm font-semibold text-blue-800 flex items-center gap-1.5"><CreditCard size={15} /> Conferência rede (cartão) — venda de ontem</h2>
+              <div>
+                <h2 className="text-sm font-semibold text-blue-800 flex items-center gap-1.5"><CreditCard size={15} /> Conferência rede (cartão) — venda de ontem</h2>
+                {diasParaVerificarPix().length > 1 && (
+                  <p className="text-[11px] text-blue-600 mt-0.5">
+                    Considerando {diasParaVerificarPix().map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')).join(', ')} (fim de semana/feriado no meio)
+                  </p>
+                )}
+              </div>
             </div>
 
             {!conferenciaSalva && (

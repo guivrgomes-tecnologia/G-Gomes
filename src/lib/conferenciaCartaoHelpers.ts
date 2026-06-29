@@ -58,9 +58,12 @@ function dataParaISO(v: any): string | null {
 }
 
 // Relatório do sistema PDV ("Filtro Sistema"): CODLOJA, DATA, DESCRICAO_LOJA, CODCAIXA, SEQUENCIAL, COO, DESCRICAO, VALOR, ...
-async function calcularVendaCartaoPorLoja(file: File, diaISO: string): Promise<Map<number, number>> {
+// Aceita mais de um dia porque, depois de um fim de semana/feriado, é preciso somar a venda de
+// todos os dias "pulados" (ex.: sábado), não só do último dia útil.
+async function calcularVendaCartaoPorLoja(file: File, diasISO: string[]): Promise<Map<number, number>> {
   const linhas = await lerAba(file, 'Dados')
-  const diaBR = paraDDMMYYYY(diaISO)
+  const diasBR = new Set(diasISO.map(paraDDMMYYYY))
+  const diasSet = new Set(diasISO)
   const resultado = new Map<number, number>()
 
   for (const row of linhas) {
@@ -68,7 +71,7 @@ async function calcularVendaCartaoPorLoja(file: File, diaISO: string): Promise<M
     if (!Number.isFinite(codloja) || codloja <= 0) continue
     const dataRow = row[1]
     const dataISORow = dataParaISO(dataRow)
-    const bateData = dataISORow === diaISO || String(dataRow).trim() === diaBR
+    const bateData = (dataISORow != null && diasSet.has(dataISORow)) || diasBR.has(String(dataRow).trim())
     if (!bateData) continue
     const descricao = String(row[6] ?? '').trim().toUpperCase()
     if (!descricao.includes('CARTOES') || descricao.includes('PIX')) continue
@@ -140,9 +143,11 @@ export type LinhaDinheiro = {
 }
 
 // Coluna J ("Total Recebido Cupom") do relatório do sistema, filtrando por DESCRICAO contendo "DINHEIRO" e pela data da venda.
-async function calcularVendaDinheiroPorLoja(file: File, diaISO: string): Promise<Map<number, number>> {
+// Aceita mais de um dia pelo mesmo motivo do cartão: fim de semana/feriado pulado precisa somar tudo.
+async function calcularVendaDinheiroPorLoja(file: File, diasISO: string[]): Promise<Map<number, number>> {
   const linhas = await lerAba(file, 'Dados')
-  const diaBR = paraDDMMYYYY(diaISO)
+  const diasBR = new Set(diasISO.map(paraDDMMYYYY))
+  const diasSet = new Set(diasISO)
   const resultado = new Map<number, number>()
 
   for (const row of linhas) {
@@ -150,7 +155,7 @@ async function calcularVendaDinheiroPorLoja(file: File, diaISO: string): Promise
     if (!Number.isFinite(codloja) || codloja <= 0) continue
     const dataRow = row[1]
     const dataISORow = dataParaISO(dataRow)
-    const bateData = dataISORow === diaISO || String(dataRow).trim() === diaBR
+    const bateData = (dataISORow != null && diasSet.has(dataISORow)) || diasBR.has(String(dataRow).trim())
     if (!bateData) continue
     const descricao = String(row[6] ?? '').trim().toUpperCase()
     if (!descricao.includes('DINHEIRO')) continue
@@ -161,14 +166,14 @@ async function calcularVendaDinheiroPorLoja(file: File, diaISO: string): Promise
   return resultado
 }
 
-export async function calcularConferenciaDinheiro(arquivoSistema: File, diaISO: string): Promise<LinhaDinheiro[]> {
-  const vendaPorLoja = await calcularVendaDinheiroPorLoja(arquivoSistema, diaISO)
+export async function calcularConferenciaDinheiro(arquivoSistema: File, diasISO: string[]): Promise<LinhaDinheiro[]> {
+  const vendaPorLoja = await calcularVendaDinheiroPorLoja(arquivoSistema, diasISO)
   return LOJAS_CARTAO.map(({ nome, codloja }) => ({ loja: nome, vendaDinheiro: vendaPorLoja.get(codloja) ?? 0 }))
 }
 
-export async function calcularConferenciaCartao(arquivoSistema: File, arquivoRede: File, diaISO: string): Promise<LinhaConferencia[]> {
+export async function calcularConferenciaCartao(arquivoSistema: File, arquivoRede: File, diasISO: string[]): Promise<LinhaConferencia[]> {
   const [vendaPorLoja, redePorEstabelecimento] = await Promise.all([
-    calcularVendaCartaoPorLoja(arquivoSistema, diaISO),
+    calcularVendaCartaoPorLoja(arquivoSistema, diasISO),
     calcularRedePorEstabelecimento(arquivoRede),
   ])
 
