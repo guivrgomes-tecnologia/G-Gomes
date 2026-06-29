@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Upload, Trash2, FileText, AlertCircle, Plus, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Upload, Trash2, FileText, AlertCircle, Plus, X, Calculator } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+import { parseNFeXML, FILIAL_SIGLA } from '../lib/nfeXmlHelper'
 
 type NotaEntrada = {
   id: string
@@ -17,11 +19,6 @@ type NotaEntrada = {
   valor_adiantamento: number
 }
 
-// Filial do CNPJ do destinatário (eu, comprador) → sigla da loja.
-const FILIAL_SIGLA: Record<string, string> = {
-  '0001': 'DP', '0004': '3R', '0005': 'AT', '0006': 'RT',
-  '0007': 'AP', '0008': 'VL', '0009': 'PF', '0010': '33',
-}
 const LOJAS_OPCOES = Object.values(FILIAL_SIGLA)
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -33,49 +30,9 @@ function parseValorBR(valor: string): number {
   return isNaN(num) ? 0 : num
 }
 
-type NotaParseada = {
-  razao_social: string | null
-  loja: string | null
-  fornecedor: string | null
-  numero_nota: string | null
-  emitida_em: string | null
-  chave_acesso: string | null
-  valor_total: number
-}
-
-function parseNFeXML(texto: string): NotaParseada | null {
-  const doc = new DOMParser().parseFromString(texto, 'application/xml')
-  if (doc.getElementsByTagName('parsererror').length > 0) return null
-
-  const infNFe = doc.getElementsByTagName('infNFe')[0]
-  const ide = doc.getElementsByTagName('ide')[0]
-  const emit = doc.getElementsByTagName('emit')[0]
-  const dest = doc.getElementsByTagName('dest')[0]
-  const icmsTot = doc.getElementsByTagName('ICMSTot')[0]
-  if (!infNFe || !ide || !emit || !dest) return null
-
-  const idAttr = infNFe.getAttribute('Id') ?? ''
-  const chave_acesso = idAttr.replace(/^NFe/i, '') || doc.getElementsByTagName('chNFe')[0]?.textContent || null
-
-  const numero_nota = ide.getElementsByTagName('nNF')[0]?.textContent ?? null
-  const dataEmissao = ide.getElementsByTagName('dhEmi')[0]?.textContent ?? ide.getElementsByTagName('dEmi')[0]?.textContent ?? null
-  const emitida_em = dataEmissao ? dataEmissao.slice(0, 10) : null
-
-  const fornecedor = emit.getElementsByTagName('xNome')[0]?.textContent ?? null
-
-  const razaoCompleta = dest.getElementsByTagName('xNome')[0]?.textContent ?? ''
-  const razao_social = razaoCompleta.trim().split(/\s+/)[0] || null
-  const cnpj = dest.getElementsByTagName('CNPJ')[0]?.textContent ?? ''
-  const filial = cnpj.length === 14 ? cnpj.slice(8, 12) : ''
-  const loja = FILIAL_SIGLA[filial] ?? null
-
-  const valor_total = parseFloat(icmsTot?.getElementsByTagName('vNF')[0]?.textContent ?? '0') || 0
-
-  return { razao_social, loja, fornecedor, numero_nota, emitida_em, chave_acesso, valor_total }
-}
-
 export default function EntradaNotas() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [notas, setNotas] = useState<NotaEntrada[]>([])
   const [loading, setLoading] = useState(true)
   const [mesAtivo, setMesAtivo] = useState<string | null>(null)
@@ -117,11 +74,18 @@ export default function EntradaNotas() {
         const { data: existente } = await supabase.from('entrada_notas_fiscais').select('id').eq('chave_acesso', parsed.chave_acesso).maybeSingle()
         if (existente) { duplicadas++; continue }
       }
-      await supabase.from('entrada_notas_fiscais').insert({
+      const { data: notaCriada } = await supabase.from('entrada_notas_fiscais').insert({
         razao_social: parsed.razao_social, loja: parsed.loja, fornecedor: parsed.fornecedor,
         numero_nota: parsed.numero_nota, emitida_em: parsed.emitida_em, chave_acesso: parsed.chave_acesso,
         valor_total: parsed.valor_total, usuario_id: user!.id,
-      })
+        vprod_nf: parsed.vprod_nf, vfrete_nf: parsed.vfrete_nf, vseg_nf: parsed.vseg_nf, voutro_nf: parsed.voutro_nf, vdesc_nf: parsed.vdesc_nf,
+      }).select('id').single()
+      if (notaCriada && parsed.itens.length > 0) {
+        await supabase.from('entrada_notas_itens').insert(parsed.itens.map((it, ordem) => ({
+          nota_id: notaCriada.id, cprod: it.cprod, cean: it.cean, xprod: it.xprod, qcom: it.qcom,
+          vuntrib: it.vuntrib, vprod: it.vprod, vipi: it.vipi, vicmsst: it.vicmsst, vfcpst: it.vfcpst, vdesc: it.vdesc, ordem,
+        })))
+      }
     }
     setEnviando(false)
     if (falhas > 0) setErro(`${falhas} arquivo(s) não eram XML de NFe válido e foram ignorados.${duplicadas > 0 ? ` ${duplicadas} já existiam (chave de acesso repetida) e também foram ignoradas.` : ''}`)
@@ -300,7 +264,8 @@ export default function EntradaNotas() {
                         onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
                     </td>
                     <td className="p-3 text-right font-semibold text-emerald-700 bg-emerald-50/40 whitespace-nowrap">{fmt(n.valor_total + n.valor_adiantamento)}</td>
-                    <td className="p-3 text-center">
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <button onClick={() => navigate(`/entrada-notas/${n.id}`)} title="Calcular preços dos itens" className="text-gray-400 hover:text-brand-600 mr-2"><Calculator size={14} /></button>
                       <button onClick={() => deletarNota(n.id)} className="text-gray-300 hover:text-red-400"><Trash2 size={14} /></button>
                     </td>
                   </tr>

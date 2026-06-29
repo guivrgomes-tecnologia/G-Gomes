@@ -21,6 +21,8 @@ import Historico from './pages/Historico'
 import Comissoes from './pages/Comissoes'
 import Notificacoes from './pages/Notificacoes'
 import EntradaNotas from './pages/EntradaNotas'
+import EntradaNotaDetalhe from './pages/EntradaNotaDetalhe'
+import Configuracoes from './pages/Configuracoes'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -53,6 +55,8 @@ export default function App() {
             <Route path="historico" element={<Historico />} />
             <Route path="comissoes" element={<Comissoes />} />
             <Route path="entrada-notas" element={<EntradaNotas />} />
+            <Route path="entrada-notas/:id" element={<EntradaNotaDetalhe />} />
+            <Route path="configuracoes" element={<Configuracoes />} />
             <Route path="financeiro" element={<FinanceiroListagem />} />
             <Route path="financeiro/:dia" element={<Financeiro />} />
             <Route path="notificacoes" element={<Notificacoes />} />

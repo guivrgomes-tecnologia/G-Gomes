@@ -41,9 +41,11 @@
   }
 }
 
-/* Impressão do documento de CP: esconde o app, mostra só o documento (portal fora do #root) */
+/* Impressão de documentos (CP, conferência de preços, etc.): esconde o app, mostra só o
+   documento (portal fora do #root). Qualquer modal de impressão usa uma classe começando
+   com "modo-impressao" no body. */
 @media print {
-  body.modo-impressao-cp #root {
+  body[class*="modo-impressao"] #root {
     display: none !important;
   }
   /* Por padrão o navegador ignora cor de fundo na impressão — força manter (cabeçalhos coloridos, faixas de transferência, etc.) */

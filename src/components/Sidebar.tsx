@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video, Users, Home, DollarSign, RotateCcw, FileText, ChevronDown, ChevronRight, FolderOpen, Target, LineChart, Percent, Landmark, Receipt, Upload } from 'lucide-react'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video, Users, Home, DollarSign, RotateCcw, FileText, ChevronDown, ChevronRight, FolderOpen, Target, LineChart, Percent, Landmark, Receipt, Upload, Settings } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
@@ -198,6 +198,10 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
             <Users size={16} /> Gerenciar usuários
           </button>
         )}
+        <button onClick={() => { navigate('/configuracoes'); onNavigate() }}
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-brand-200 hover:text-white hover:bg-brand-800 rounded-lg transition-colors mb-1">
+          <Settings size={16} /> Configurações
+        </button>
         <button onClick={() => { navigate('/perfil'); onNavigate() }} className="flex items-center gap-3 mb-3 px-1 w-full hover:bg-brand-800 rounded-lg py-1 transition-colors text-left">
           {profile?.avatar_url ? (
             <img src={profile.avatar_url} alt={profile.nome} className="w-8 h-8 rounded-full object-cover shrink-0" />
