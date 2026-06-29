@@ -32,10 +32,9 @@ export default function Configuracoes() {
     setSalvando(false)
   }
 
-  async function atualizarLoja(id: string, campo: 'nome' | 'percentual_padrao', valor: string) {
-    const valorSalvo = campo === 'percentual_padrao' ? (parseFloat(valor.replace(',', '.')) || 0) : valor
-    setLojas(prev => prev.map(l => l.id === id ? { ...l, [campo]: valorSalvo } : l))
-    await supabase.from('config_lojas').update({ [campo]: valorSalvo }).eq('id', id)
+  async function atualizarLoja(id: string, valor: string) {
+    setLojas(prev => prev.map(l => l.id === id ? { ...l, nome: valor } : l))
+    await supabase.from('config_lojas').update({ nome: valor }).eq('id', id)
   }
 
   async function removerLoja(id: string) {
@@ -61,7 +60,7 @@ export default function Configuracoes() {
         </h2>
         <p className="text-xs text-gray-400 mb-4">
           Essa lista aparece sempre que uma tela pedir pra escolher entre as lojas (ex.: novas listas de preço na entrada de notas).
-          Alterar aqui muda em todo lugar que usa essa lista.
+          Alterar aqui muda em todo lugar que usa essa lista. A margem de cada lista de preço é definida na própria página de cálculo de preços.
         </p>
 
         <div className="space-y-2 mb-3">
@@ -69,14 +68,7 @@ export default function Configuracoes() {
             <div key={l.id} className="flex items-center gap-2">
               <input className="flex-1 input text-sm" value={editBuffer[`nome-${l.id}`] ?? l.nome}
                 onChange={e => setEditBuffer(b => ({ ...b, [`nome-${l.id}`]: e.target.value }))}
-                onBlur={e => { atualizarLoja(l.id, 'nome', e.target.value); setEditBuffer(b => { const x = { ...b }; delete x[`nome-${l.id}`]; return x }) }} />
-              <div className="flex items-center gap-1 shrink-0">
-                <input type="text" inputMode="decimal" className="no-spin w-16 text-right border border-gray-300 rounded-lg px-2 py-2 text-sm"
-                  value={editBuffer[`pct-${l.id}`] ?? String(l.percentual_padrao)}
-                  onChange={e => setEditBuffer(b => ({ ...b, [`pct-${l.id}`]: e.target.value }))}
-                  onBlur={e => { atualizarLoja(l.id, 'percentual_padrao', e.target.value); setEditBuffer(b => { const x = { ...b }; delete x[`pct-${l.id}`]; return x }) }} />
-                <span className="text-xs text-gray-400">%</span>
-              </div>
+                onBlur={e => { atualizarLoja(l.id, e.target.value); setEditBuffer(b => { const x = { ...b }; delete x[`nome-${l.id}`]; return x }) }} />
               <button onClick={() => removerLoja(l.id)} className="text-gray-300 hover:text-red-400 shrink-0"><Trash2 size={15} /></button>
             </div>
           ))}
