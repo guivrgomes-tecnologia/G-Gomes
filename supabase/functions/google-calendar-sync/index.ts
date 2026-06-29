@@ -96,6 +96,12 @@ Deno.serve(async (req) => {
     const url = evento.criar_meet ? `${BASE}?conferenceDataVersion=1` : BASE
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(buildGcalEvent(evento)) })
     const gcal = await res.json()
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'erro_google', details: gcal }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     if (gcal.id && evento.atualizar_tabela_eventos !== false) {
       await supabase.from('eventos').update({ google_event_id: gcal.id }).eq('id', evento.id)
     }
@@ -108,6 +114,12 @@ Deno.serve(async (req) => {
     const url = evento.criar_meet ? `${BASE}/${evento.google_event_id}?conferenceDataVersion=1` : `${BASE}/${evento.google_event_id}`
     const res = await fetch(url, { method: 'PUT', headers, body: JSON.stringify(buildGcalEvent(evento)) })
     const gcal = await res.json()
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'erro_google', details: gcal }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     return new Response(JSON.stringify({ ok: true, hangoutLink: gcal.hangoutLink ?? null }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

@@ -340,7 +340,20 @@ export default function Reunioes() {
       body: { action: reuniaoAberta.google_event_id ? 'update' : 'create', user_id: user!.id, evento: payload },
     })
     setGerandoMeet(false)
-    if (error || !data?.hangoutLink) { alert('Não foi possível gerar o link. Confira se sua conta do Google está conectada na Agenda.'); return }
+    let corpoErro: any = data?.error ? data : null
+    if (error && (error as any).context?.json) {
+      try { corpoErro = await (error as any).context.json() } catch { /* ignora */ }
+    }
+    if (corpoErro || error || !data?.hangoutLink) {
+      const codigo = corpoErro?.error
+      const detalhes = corpoErro?.details?.error?.message ?? corpoErro?.details?.error_description
+      const mensagem = codigo === 'not_connected' ? 'Conexão com o Google expirou. Reconecte na Agenda.'
+        : detalhes ? `Erro do Google: ${detalhes}`
+        : codigo ? `${codigo}${corpoErro?.details ? ' — ' + JSON.stringify(corpoErro.details).slice(0, 300) : ''}`
+        : error?.message ?? 'Não foi possível gerar o link. Confira se sua conta do Google está conectada na Agenda.'
+      alert(mensagem)
+      return
+    }
     setEditLinkVideo(data.hangoutLink)
     const updates: Partial<Reuniao> = { link_video: data.hangoutLink }
     if (data.google_event_id) updates.google_event_id = data.google_event_id
