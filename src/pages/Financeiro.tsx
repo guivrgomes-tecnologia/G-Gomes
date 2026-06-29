@@ -298,11 +298,14 @@ export default function Financeiro() {
     })
     setNovaNota(n => ({ ...n, valor: '' }))
     await carregarNotasFiscais()
+    if (novaNota.forma_pagamento === 'pix') await carregarVerificacaoSaldo()
   }
 
   async function removerNotaFiscal(id: string) {
+    const nota = notasFiscais.find(n => n.id === id)
     await supabase.from('financeiro_notas_fiscais').delete().eq('id', id)
     await carregarNotasFiscais()
+    if (nota?.forma_pagamento === 'pix') await carregarVerificacaoSaldo()
   }
 
   function notasPorLoja(loja: string) {
@@ -348,10 +351,11 @@ export default function Financeiro() {
   async function carregarVerificacaoSaldo() {
     setCarregandoVerificacaoSaldo(true)
     const diaUtil = diaUtilAnterior(diaSelecionado, feriados)
-    const dias = diasParaVerificarPix()
+    // As notas fiscais ficam salvas no dia em que são lançadas (hoje, diaSelecionado), não no dia
+    // da venda em si — diferente do pix do relatório do sistema, que é filtrado pela data da venda.
     const [saldoOntem, notasPix] = await Promise.all([
       calcularSaldoDepoisPagamentos(diaUtil, ['FAPS SICOOB', 'FAPS ITAU']),
-      buscarNotasPixDosDias(dias),
+      buscarNotasPixDosDias([diaSelecionado]),
     ])
     setSaldoEsperadoOntem((saldoOntem['FAPS SICOOB'] ?? 0) + (saldoOntem['FAPS ITAU'] ?? 0))
     setNotasPixOntem(notasPix)
