@@ -20,6 +20,7 @@ import Metas from './pages/Metas'
 import Historico from './pages/Historico'
 import Comissoes from './pages/Comissoes'
 import Notificacoes from './pages/Notificacoes'
+import EntradaNotas from './pages/EntradaNotas'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth()
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="metas" element={<Metas />} />
             <Route path="historico" element={<Historico />} />
             <Route path="comissoes" element={<Comissoes />} />
+            <Route path="entrada-notas" element={<EntradaNotas />} />
             <Route path="financeiro" element={<FinanceiroListagem />} />
             <Route path="financeiro/:dia" element={<Financeiro />} />
             <Route path="notificacoes" element={<Notificacoes />} />
