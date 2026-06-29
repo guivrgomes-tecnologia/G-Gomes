@@ -844,6 +844,10 @@ export default function Financeiro() {
 
   async function moverParaOutroDia(original: Lancamento, novaData: string) {
     if (!original.id || !novaData) return
+    // Se já estava adiado pra outro dia, apaga a cópia antiga antes de criar a nova — senão fica duplicado.
+    if (original.redirecionado_para) {
+      await supabase.from('financeiro_lancamentos').delete().eq('importado_de_id', original.id).eq('dia', original.redirecionado_para)
+    }
     await supabase.from('financeiro_lancamentos').insert({
       dia: novaData,
       vencimento: original.vencimento,
@@ -1814,7 +1818,7 @@ export default function Financeiro() {
                                 <Trash2 size={14} />
                               </button>
                             )}
-                            {l.id && !l.redirecionado_para && !l.importado_de_id && !fechado && (
+                            {l.id && !fechado && (
                               movendoId === l.id ? (
                                 <div className="relative flex items-center gap-1">
                                   <input type="date" className="input text-xs py-1 px-1.5 w-28" value={dataMover} onChange={e => setDataMover(e.target.value)} autoFocus />
@@ -1851,7 +1855,7 @@ export default function Financeiro() {
                                   )}
                                 </div>
                               ) : (
-                                <button onClick={() => { setMovendoId(l.id!); setDataMover('') }} title="Mover para outro dia" className="text-gray-400 hover:text-brand-600">
+                                <button onClick={() => { setMovendoId(l.id!); setDataMover(l.redirecionado_para ?? '') }} title={l.redirecionado_para ? 'Mudar para outro dia' : 'Mover para outro dia'} className="text-gray-400 hover:text-brand-600">
                                   <ChevronRight size={15} />
                                 </button>
                               )
