@@ -905,6 +905,9 @@ export default function Financeiro() {
 
   const listaExibida = fechado ? lancamentosSalvos : previa
   const total = listaExibida?.filter(l => !l.redirecionado_para).reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0) ?? 0
+  // Agendados: já têm uma conta (pagar_em) escolhida — já decidiu de onde vai sair o dinheiro, falta só o dia chegar/fechar.
+  const lancamentosAgendados = listaExibida?.filter(l => !l.redirecionado_para && l.pagar_em) ?? []
+  const totalAgendado = lancamentosAgendados.reduce((s, l) => s + (l.valor ?? 0) + (l.juros ?? 0), 0)
 
   function alternarOrdenacao(campo: keyof Lancamento) {
     setOrdenacao(prev => prev?.campo === campo ? { campo, asc: !prev.asc } : { campo, asc: true })
@@ -1053,7 +1056,7 @@ export default function Financeiro() {
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <div className="flex items-center gap-2 mb-6 flex-wrap sticky top-[57px] z-30 bg-gray-50 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 border-b border-gray-200 shadow-sm">
             <button onClick={() => navigate(`/financeiro/${somarDias(diaSelecionado, -1)}`)} className="p-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
               <ChevronLeft size={16} />
             </button>
@@ -1711,6 +1714,9 @@ export default function Financeiro() {
                     </>
                   )}
                 </div>
+              </div>
+              <div className="bg-sky-50 border-b border-sky-100 text-sky-800 text-sm font-semibold px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+                <span>Pagamentos agendados: {fmt(totalAgendado)} ({lancamentosAgendados.length})</span>
               </div>
               {listaExibida.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6 bg-white">Nenhum lançamento com vencimento nesse dia.</p>

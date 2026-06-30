@@ -31,7 +31,7 @@ export default function Layout() {
       {/* Conteúdo principal */}
       <main className="flex-1 h-screen overflow-y-auto min-w-0">
         {/* Header (mobile: barra escura com menu; desktop: barra clara só com o sino) */}
-        <div className="sticky top-0 z-30 flex items-center gap-3 px-4 lg:px-6 py-3 bg-brand-900 lg:bg-white text-white lg:text-gray-900 lg:border-b lg:border-gray-100">
+        <div className="sticky top-0 z-40 flex items-center gap-3 px-4 lg:px-6 py-3 bg-brand-900 lg:bg-white text-white lg:text-gray-900 lg:border-b lg:border-gray-100">
           <button onClick={() => setMenuAberto(true)} className="lg:hidden p-1.5 hover:bg-brand-800 rounded-lg">
             <Menu size={22} />
           </button>
