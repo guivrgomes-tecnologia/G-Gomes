@@ -207,6 +207,15 @@ export default function Reunioes() {
     return blocos
   }
 
+  // Atualiza dados_importados tanto na reunião aberta quanto nas listas (reunioes/minhasReunioes) —
+  // senão, ao fechar e reabrir a reunião a partir da lista, ela volta pro estado antigo (a lista nunca
+  // foi atualizada, só a tela aberta).
+  function atualizarDadosImportadosLocal(reuniaoId: string, novos: DadosImportados[]) {
+    setReuniaoAberta(prev => prev && prev.id === reuniaoId ? { ...prev, dados_importados: novos } : prev)
+    setReunioes(prev => prev.map(r => r.id === reuniaoId ? { ...r, dados_importados: novos } : r))
+    setMinhasReunioes(prev => prev.map(r => r.id === reuniaoId ? { ...r, dados_importados: novos } : r))
+  }
+
   async function importarMetas() {
     if (!reuniaoAberta) return
     const mes = metasMeses.find(m => m.id === metasMesEscolhido)
@@ -218,8 +227,9 @@ export default function Reunioes() {
     }
     const atuais = (reuniaoAberta.dados_importados ?? []) as DadosImportados[]
     const novos = [...atuais, bloco]
-    await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
-    setReuniaoAberta({ ...reuniaoAberta, dados_importados: novos })
+    const { error } = await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
+    if (error) { alert('Não foi possível salvar: ' + error.message); setImportando(false); return }
+    atualizarDadosImportadosLocal(reuniaoAberta.id, novos)
     setShowImportar(false)
     setImportando(false)
   }
@@ -259,8 +269,9 @@ export default function Reunioes() {
     }
     const atuais = (reuniaoAberta.dados_importados ?? []) as DadosImportados[]
     const novos = [...atuais, bloco]
-    await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
-    setReuniaoAberta({ ...reuniaoAberta, dados_importados: novos })
+    const { error } = await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
+    if (error) { alert('Não foi possível salvar: ' + error.message); setImportando(false); return }
+    atualizarDadosImportadosLocal(reuniaoAberta.id, novos)
     setShowImportar(false)
     setImportando(false)
   }
@@ -268,8 +279,9 @@ export default function Reunioes() {
   async function removerDadosImportados(blocoId: string) {
     if (!reuniaoAberta) return
     const novos = (reuniaoAberta.dados_importados ?? []).filter(b => b.id !== blocoId)
-    await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
-    setReuniaoAberta({ ...reuniaoAberta, dados_importados: novos })
+    const { error } = await supabase.from('reunioes').update({ dados_importados: novos }).eq('id', reuniaoAberta.id)
+    if (error) { alert('Não foi possível salvar: ' + error.message); setImportando(false); return }
+    atualizarDadosImportadosLocal(reuniaoAberta.id, novos)
   }
 
   const loadPastas = useCallback(async () => {
