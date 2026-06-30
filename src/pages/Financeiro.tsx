@@ -961,8 +961,8 @@ export default function Financeiro() {
   // "Loja 01" representa o fluxo que antes passava pela FAPS ITAU: saldo inicial + depósitos - pagamentos.
   // O recebido da rede (lojas físicas) agora vai direto para a FAPS SICOOB, então não entra mais nessa conta.
   const transfItauParaSicoob = (saldos['FAPS ITAU'] ?? 0) + depositoPorConta('FAPS ITAU') - pagamentosPorConta('FAPS ITAU')
-  const transfSicoobParaGGomes = pagamentosPorConta('G GOMES SICOOB') - (saldos['G GOMES SICOOB'] ?? 0)
-  const transfSicoobParaTS = pagamentosPorConta('TS SICOOB') - (saldos['TS SICOOB'] ?? 0)
+  const transfSicoobParaGGomes = Math.max(0, pagamentosPorConta('G GOMES SICOOB') - (saldos['G GOMES SICOOB'] ?? 0))
+  const transfSicoobParaTS = Math.max(0, pagamentosPorConta('TS SICOOB') - (saldos['TS SICOOB'] ?? 0))
   const transfSicoobParaPessoalBradesco = pagamentosPorConta('PESSOAL BRADESCO')
   const transfSicoobParaPessoalItau = pagamentosPorConta('PESSOAL ITAU')
   const saqueSicoobDinheiro = pagamentosPorConta('DINHEIRO')
