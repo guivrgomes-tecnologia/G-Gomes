@@ -653,8 +653,12 @@ export default function Financeiro() {
     setErro('')
     const { data } = await supabase.from('financeiro_lancamentos').select('*').eq('dia', diaSelecionado).order('fornecedor')
     const fechados = (data ?? []).filter(r => r.fechado)
+    // Lançamentos adiados pra outro dia nunca são fechados junto com o resto (fecharDia os deixa de
+    // fora de propósito) — mas precisam continuar aparecendo aqui, senão somem da tela e da impressão
+    // assim que o dia fecha.
+    const adiadosNaoFechados = (data ?? []).filter(r => !r.fechado && r.redirecionado_para)
     if (fechados.length > 0) {
-      setLancamentosSalvos(fechados)
+      setLancamentosSalvos([...fechados, ...adiadosNaoFechados])
       setFechado({ fechado_em: fechados[0].criado_em })
     } else {
       setLancamentosSalvos([])
@@ -1718,6 +1722,12 @@ export default function Financeiro() {
               <div className="bg-sky-50 border-b border-sky-100 text-sky-800 text-sm font-semibold px-4 py-2 flex items-center justify-between flex-wrap gap-2">
                 <span>Pagamentos agendados: {fmt(totalAgendado)} ({lancamentosAgendados.length})</span>
               </div>
+              {pagamentosAdiados.length > 0 && (
+                <div className="bg-red-50 border-b border-red-100 text-red-800 text-sm font-semibold px-4 py-2 flex items-center gap-2">
+                  <span className="inline-block w-2 h-2.5 bg-red-400 rounded-sm" />
+                  Adiados para comunicar: {pagamentosAdiados.length}
+                </div>
+              )}
               {listaExibida.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6 bg-white">Nenhum lançamento com vencimento nesse dia.</p>
               ) : (
