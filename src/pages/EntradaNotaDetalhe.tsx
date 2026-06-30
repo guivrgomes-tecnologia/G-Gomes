@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ChevronLeft, Plus, X, Upload, Printer, HandCoins, Truck, Tags, Store } from 'lucide-react'
+import JsBarcode from 'jsbarcode'
 import { supabase } from '../lib/supabase'
 import { parseNFeXML, custoBaseItem, arredondar99 } from '../lib/nfeXmlHelper'
 import type { ConfigLoja } from './Configuracoes'
@@ -26,6 +27,7 @@ type Nota = {
 type Item = {
   id: string
   cprod: string | null
+  cean: string | null
   xprod: string | null
   qcom: number
   vuntrib: number
@@ -46,6 +48,22 @@ const CORES_MARGEM = ['#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6']
 const CORES_MARGEM_BG = ['#d1fae5', '#dbeafe', '#fef3c7', '#fce7f3', '#ede9fe']
 const CORES_MARGEM_BG_SUAVE = ['#ecfdf5', '#eff6ff', '#fffbeb', '#fdf2f8', '#f5f3ff']
 const CORES_MARGEM_TEXT = ['#047857', '#1d4ed8', '#b45309', '#be185d', '#6d28d9']
+
+// Desenha o código de barras de um item pra impressão. Usa o formato certo conforme o tamanho do
+// EAN (a maioria das NFe vem com EAN13); cai pra CODE128 se não for um EAN/UPC padrão.
+function Barcode({ value }: { value: string | null }) {
+  const ref = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    if (!ref.current || !value || /^(sem gtin|0+)$/i.test(value.trim())) return
+    const limpo = value.trim()
+    const formato = /^\d{13}$/.test(limpo) ? 'EAN13' : /^\d{12}$/.test(limpo) ? 'UPC' : /^\d{8}$/.test(limpo) ? 'EAN8' : 'CODE128'
+    try {
+      JsBarcode(ref.current, limpo, { format: formato, height: 28, width: 1.3, fontSize: 10, margin: 2, displayValue: true })
+    } catch { /* código inválido pro formato — deixa em branco */ }
+  }, [value])
+  if (!value || /^(sem gtin|0+)$/i.test(value.trim())) return <span className="text-gray-300 text-[10px]">—</span>
+  return <svg ref={ref} />
+}
 
 function parseValorBR(valor: string): number {
   const limpo = valor.trim().replace(/\./g, '').replace(',', '.')
@@ -329,6 +347,7 @@ export default function EntradaNotaDetalhe() {
             <thead>
               <tr>
                 <th className="text-left p-1.5 border border-gray-300 bg-gray-100">Produto</th>
+                <th className="text-center p-1.5 border border-gray-300 bg-gray-100">Código de barras</th>
                 <th className="text-right p-1.5 border border-gray-300 bg-gray-100">Custo final</th>
                 {margens.map((m, i) => (
                   <th key={m.id} className="text-right p-1.5 border border-gray-300 whitespace-nowrap" style={{ background: CORES_MARGEM_BG[i % CORES_MARGEM_BG.length], color: CORES_MARGEM_TEXT[i % CORES_MARGEM_TEXT.length] }}>
@@ -345,6 +364,7 @@ export default function EntradaNotaDetalhe() {
               {linhas.map(({ item, custoFinal, precos }, idx) => (
                 <tr key={item.id} style={{ background: idx % 2 === 0 ? 'white' : '#fafafa' }}>
                   <td className="p-1.5 border border-gray-300">{item.xprod}</td>
+                  <td className="p-1.5 border border-gray-300 text-center"><Barcode value={item.cean} /></td>
                   <td className="p-1.5 border border-gray-300 text-right whitespace-nowrap font-medium">{fmt(custoFinal)}</td>
                   {precos.map((p, i) => (
                     <td key={i} className="p-1.5 border border-gray-300 text-right whitespace-nowrap font-semibold" style={{ background: CORES_MARGEM_BG_SUAVE[i % CORES_MARGEM_BG_SUAVE.length], color: CORES_MARGEM_TEXT[i % CORES_MARGEM_TEXT.length] }}>
