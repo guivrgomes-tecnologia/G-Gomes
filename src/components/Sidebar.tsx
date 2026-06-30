@@ -11,7 +11,7 @@ const ALL_LINKS = [
   { to: '/pendencias', label: 'Pendências',  icon: AlertCircle,     modulo: 'pendencias' },
   { to: '/vendas',     label: 'Vendas',      icon: LineChart,       modulo: null },
   { to: '/financeiro', label: 'Financeiro',  icon: Landmark,        modulo: 'financeiro' },
-  { to: '/notas-fiscais', label: 'Notas Fiscais', icon: Receipt,    modulo: null },
+  { to: '/notas-fiscais', label: 'Notas Fiscais', icon: Receipt,    modulo: 'notas_fiscais' },
   { to: '/reunioes',   label: 'Reuniões',    icon: Video,           modulo: 'reunioes' },
   { to: '/documentos', label: 'Documentos',  icon: FolderOpen,      modulo: 'documentos' },
   { to: '/casa',       label: 'Casa',        icon: Home,            modulo: 'casa' },
@@ -29,8 +29,8 @@ const VENDAS_SUB = [
   { to: '/comissoes',  label: 'Comissões',  icon: Percent,   modulo: 'comissoes' },
 ]
 
-const NOTAS_FISCAIS_SUB: { to: string; label: string; icon: typeof Upload; modulo: string | null }[] = [
-  { to: '/entrada-notas', label: 'Entrada de Notas', icon: Upload, modulo: null },
+const NOTAS_FISCAIS_SUB = [
+  { to: '/entrada-notas', label: 'Entrada de Notas', icon: Upload, modulo: 'notas_fiscais' },
 ]
 
 export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
@@ -42,7 +42,7 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const modulos = profile?.modulos ?? ['agenda', 'processos', 'pendencias', 'metas', 'vendas', 'comissoes', 'reunioes', 'casa', 'documentos', 'notas_fiscais']
   const links = ALL_LINKS.filter(l => l.modulo === null || modulos.includes(l.modulo))
   const vendasSubVisivel = VENDAS_SUB.filter(s => modulos.includes(s.modulo))
-  const notasFiscaisSubVisivel = NOTAS_FISCAIS_SUB.filter(s => s.modulo === null || modulos.includes(s.modulo))
+  const notasFiscaisSubVisivel = NOTAS_FISCAIS_SUB.filter(s => modulos.includes(s.modulo))
   const casaAtiva = location.pathname === '/casa' || location.pathname.startsWith('/casa')
   const [casaAberta, setCasaAberta] = useState(casaAtiva)
   const vendasAtiva = vendasSubVisivel.some(s => location.pathname === s.to)

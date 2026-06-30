@@ -14,6 +14,9 @@ const MODULOS = [
   { key: 'financeiro', label: 'Financeiro' },
   { key: 'comissoes',  label: 'Comissões' },
   { key: 'reunioes',   label: 'Reuniões' },
+  { key: 'documentos', label: 'Documentos' },
+  { key: 'casa',       label: 'Casa' },
+  { key: 'notas_fiscais', label: 'Notas Fiscais' },
 ]
 
 export default function Admin() {
