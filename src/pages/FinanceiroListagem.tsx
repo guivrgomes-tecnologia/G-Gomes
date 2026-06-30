@@ -145,7 +145,7 @@ export default function FinanceiroListagem() {
   return (
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Programação</h1>
         <div className="flex items-center gap-3">
           <button onClick={apagarDuplicados} disabled={apagandoDuplicados} className="text-xs px-3 py-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
             {apagandoDuplicados ? 'Apagando...' : 'Apagar duplicados'}

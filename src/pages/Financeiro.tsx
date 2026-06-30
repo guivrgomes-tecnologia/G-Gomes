@@ -895,7 +895,7 @@ export default function Financeiro() {
     return (
       <div className="p-4 sm:p-8">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Programação</h1>
         </div>
         <div className="card p-8 text-center">
           <p className="text-sm text-gray-600 mb-3">Vencimentos de sábado e domingo são agrupados na segunda-feira seguinte. Esse dia não tem lançamentos próprios.</p>
@@ -1037,7 +1037,7 @@ export default function Financeiro() {
     <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Financeiro</h1>
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2"><Landmark size={24} /> Programação</h1>
           <p className="text-sm text-gray-400">Contas a pagar com vencimento no dia, vindas da planilha</p>
         </div>
         <div className="flex items-center gap-2">

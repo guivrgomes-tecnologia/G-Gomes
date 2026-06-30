@@ -13,6 +13,7 @@ import GoogleCallback from './pages/GoogleCallback'
 import MicrosoftCallback from './pages/MicrosoftCallback'
 import Financeiro from './pages/Financeiro'
 import FinanceiroListagem from './pages/FinanceiroListagem'
+import FinanceiroDashboard from './pages/FinanceiroDashboard'
 import ResetPassword from './pages/ResetPassword'
 import Casa from './pages/Casa'
 import DocumentosEmpresa from './pages/DocumentosEmpresa'
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="entrada-notas/:id" element={<EntradaNotaDetalhe />} />
             <Route path="configuracoes" element={<Configuracoes />} />
             <Route path="financeiro" element={<FinanceiroListagem />} />
+            <Route path="financeiro/dashboard" element={<FinanceiroDashboard />} />
             <Route path="financeiro/:dia" element={<Financeiro />} />
             <Route path="notificacoes" element={<Notificacoes />} />
             <Route path="perfil" element={<Perfil />} />

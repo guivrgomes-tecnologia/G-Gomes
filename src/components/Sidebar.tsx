@@ -33,6 +33,11 @@ const NOTAS_FISCAIS_SUB = [
   { to: '/entrada-notas', label: 'Entrada de Notas', icon: Upload, modulo: 'notas_fiscais' },
 ]
 
+const FINANCEIRO_SUB = [
+  { to: '/financeiro/dashboard', label: 'Dashboard',    icon: LineChart, modulo: 'financeiro' },
+  { to: '/financeiro',           label: 'Programação',  icon: Landmark,  modulo: 'financeiro' },
+]
+
 export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
@@ -43,12 +48,15 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const links = ALL_LINKS.filter(l => l.modulo === null || modulos.includes(l.modulo))
   const vendasSubVisivel = VENDAS_SUB.filter(s => modulos.includes(s.modulo))
   const notasFiscaisSubVisivel = NOTAS_FISCAIS_SUB.filter(s => modulos.includes(s.modulo))
+  const financeiroSubVisivel = FINANCEIRO_SUB.filter(s => modulos.includes(s.modulo))
   const casaAtiva = location.pathname === '/casa' || location.pathname.startsWith('/casa')
   const [casaAberta, setCasaAberta] = useState(casaAtiva)
   const vendasAtiva = vendasSubVisivel.some(s => location.pathname === s.to)
   const [vendasAberta, setVendasAberta] = useState(vendasAtiva)
   const notasFiscaisAtiva = notasFiscaisSubVisivel.some(s => location.pathname === s.to)
   const [notasFiscaisAberta, setNotasFiscaisAberta] = useState(notasFiscaisAtiva)
+  const financeiroAtiva = location.pathname === '/financeiro' || location.pathname.startsWith('/financeiro/')
+  const [financeiroAberta, setFinanceiroAberta] = useState(financeiroAtiva)
 
   async function handleSignOut() {
     await signOut()
@@ -167,6 +175,42 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
                         {subLabel}
                       </NavLink>
                     ))}
+                  </div>
+                )}
+              </>
+            ) : to === '/financeiro' ? (
+              <>
+                <button
+                  onClick={() => setFinanceiroAberta(v => !v)}
+                  className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    financeiroAtiva ? 'bg-brand-600 text-white' : 'text-brand-200 hover:bg-brand-800 hover:text-white'
+                  }`}
+                >
+                  <Icon size={18} />
+                  <span className="flex-1 text-left">{label}</span>
+                  {financeiroAberta ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+                {financeiroAberta && (
+                  <div className="ml-4 mt-1 space-y-0.5">
+                    {financeiroSubVisivel.map(({ to: subTo, label: subLabel, icon: SubIcon }) => {
+                      // Programação também "ganha" as rotas de dia (/financeiro/2026-06-30), só o
+                      // Dashboard que precisa bater exato — senão os dois ficariam destacados juntos.
+                      const isSubActive = subTo === '/financeiro'
+                        ? location.pathname === '/financeiro' || (location.pathname.startsWith('/financeiro/') && location.pathname !== '/financeiro/dashboard')
+                        : location.pathname === subTo
+                      return (
+                        <button
+                          key={subTo}
+                          onClick={() => { navigate(subTo); onNavigate() }}
+                          className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                            isSubActive ? 'text-white bg-brand-700' : 'text-brand-300 hover:text-white hover:bg-brand-800'
+                          }`}
+                        >
+                          <SubIcon size={15} />
+                          {subLabel}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </>

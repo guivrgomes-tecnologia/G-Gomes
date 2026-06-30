@@ -11,7 +11,7 @@ const MODULOS = [
   { key: 'pendencias', label: 'Pendências' },
   { key: 'metas',      label: 'Metas' },
   { key: 'vendas',     label: 'Histórico (Vendas)' },
-  { key: 'financeiro', label: 'Financeiro' },
+  { key: 'financeiro', label: 'Programação' },
   { key: 'comissoes',  label: 'Comissões' },
   { key: 'reunioes',   label: 'Reuniões' },
   { key: 'documentos', label: 'Documentos' },
