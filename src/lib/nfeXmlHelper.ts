@@ -94,8 +94,8 @@ export function parseNFeXML(texto: string): NotaParseada | null {
 // item, mais a parte proporcional (por participação no vProd total da nota) do frete/seguro/outras
 // despesas menos desconto que vierem no total da NF — tudo isso vem como total da linha (qCom
 // unidades) na própria NFe, por isso divide por qCom no final pra chegar no custo unitário.
-export function custoBaseItem(item: Pick<ItemNFe, 'vprod' | 'vipi' | 'vicmsst' | 'vfcpst' | 'vdesc' | 'qcom'>, nota: { vprod_nf: number; vfrete_nf: number; vseg_nf: number; voutro_nf: number; vdesc_nf: number }): number {
-  const rateioNF = nota.vfrete_nf + nota.vseg_nf + nota.voutro_nf - nota.vdesc_nf
+export function custoBaseItem(item: Pick<ItemNFe, 'vprod' | 'vipi' | 'vicmsst' | 'vfcpst' | 'vdesc' | 'qcom'>, nota: { vprod_nf: number; vfrete_nf: number; vseg_nf: number; voutro_nf: number; vdesc_nf: number; valor_st_guia?: number }): number {
+  const rateioNF = nota.vfrete_nf + nota.vseg_nf + nota.voutro_nf - nota.vdesc_nf + (nota.valor_st_guia ?? 0)
   const proporcao = nota.vprod_nf > 0 ? item.vprod / nota.vprod_nf : 0
   const custoLinha = item.vprod + item.vipi + item.vicmsst + item.vfcpst - item.vdesc + rateioNF * proporcao
   return item.qcom > 0 ? custoLinha / item.qcom : custoLinha

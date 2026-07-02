@@ -22,6 +22,7 @@ type Nota = {
   vseg_nf: number
   voutro_nf: number
   vdesc_nf: number
+  valor_st_guia: number
 }
 
 type Item = {
@@ -131,7 +132,7 @@ export default function EntradaNotaDetalhe() {
     await carregar()
   }
 
-  async function atualizarNota(campo: 'frete_manual' | 'valor_adiantamento', valor: string) {
+  async function atualizarNota(campo: 'frete_manual' | 'valor_adiantamento' | 'valor_st_guia', valor: string) {
     const num = parseValorBR(valor)
     setNota(prev => prev ? { ...prev, [campo]: num } : prev)
     await supabase.from('entrada_notas_fiscais').update({ [campo]: num }).eq('id', id)
@@ -236,6 +237,16 @@ export default function EntradaNotaDetalhe() {
               <p className="text-[11px] text-sky-700/80 mt-1.5">
                 <span className="font-semibold">{(fretePct * 100).toFixed(2)}%</span> sobre produtos + adiantamento ({fmt(baseFrete)})
               </p>
+            </div>
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+              <label className="text-xs font-semibold text-orange-700 flex items-center gap-1.5 mb-1.5">
+                <Store size={14} /> ST guia separada
+              </label>
+              <input type="text" inputMode="decimal" className="no-spin w-full text-right border border-orange-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:border-orange-500"
+                value={editBuffer.st ?? (nota.valor_st_guia ? nota.valor_st_guia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')}
+                onChange={e => setEditBuffer(b => ({ ...b, st: e.target.value }))}
+                onBlur={e => { atualizarNota('valor_st_guia', e.target.value); setEditBuffer(b => { const x = { ...b }; delete x.st; return x }) }} />
+              <p className="text-[11px] text-orange-700/80 mt-1.5">Rateado proporcionalmente ao custo de cada produto</p>
             </div>
             <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
               <label className="text-xs font-semibold text-violet-700 flex items-center gap-1.5 mb-1.5">

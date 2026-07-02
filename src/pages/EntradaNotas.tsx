@@ -40,6 +40,7 @@ export default function EntradaNotas() {
   const [erro, setErro] = useState('')
   const [arrastando, setArrastando] = useState(false)
   const [pendingXml, setPendingXml] = useState<NotaParseada[]>([])
+  const [stValues, setStValues] = useState<number[]>([]) // valor ST guia separada por nota
   const [pedidoVinculo, setPedidoVinculo] = useState<string>('') // grupo_id selecionado para vincular
   const [pedidosDisponiveis, setPedidosDisponiveis] = useState<{ grupo_id: string; numero_pedido: number | null; fornecedor: string | null }[]>([])
   const [editBuffer, setEditBuffer] = useState<Record<string, string>>({})
@@ -93,14 +94,19 @@ export default function EntradaNotas() {
     }
     setEnviando(false)
     if (falhas > 0) setErro(`${falhas} arquivo(s) não eram XML de NFe válido e foram ignorados.`)
-    if (parsedList.length > 0) setPendingXml(parsedList)
+    if (parsedList.length > 0) {
+      setPendingXml(parsedList)
+      setStValues(Array(parsedList.length).fill(0))
+    }
   }
 
   async function confirmarXml() {
     if (pendingXml.length === 0) return
     setEnviando(true)
     let duplicadas = 0
-    for (const parsed of pendingXml) {
+    for (let i = 0; i < pendingXml.length; i++) {
+      const parsed = pendingXml[i]
+      const valor_st_guia = stValues[i] ?? 0
       if (parsed.chave_acesso) {
         const { data: existente } = await supabase.from('entrada_notas_fiscais').select('id').eq('chave_acesso', parsed.chave_acesso).maybeSingle()
         if (existente) { duplicadas++; continue }
@@ -110,6 +116,7 @@ export default function EntradaNotas() {
         numero_nota: parsed.numero_nota, emitida_em: parsed.emitida_em, chave_acesso: parsed.chave_acesso,
         valor_total: parsed.valor_total, usuario_id: user!.id,
         vprod_nf: parsed.vprod_nf, vfrete_nf: parsed.vfrete_nf, vseg_nf: parsed.vseg_nf, voutro_nf: parsed.voutro_nf, vdesc_nf: parsed.vdesc_nf,
+        valor_st_guia: valor_st_guia || null,
         pedido_grupo_id: pedidoVinculo || null,
       }).select('id').single()
       if (notaCriada && parsed.itens.length > 0) {
@@ -121,6 +128,7 @@ export default function EntradaNotas() {
     }
     setEnviando(false)
     setPendingXml([])
+    setStValues([])
     setPedidoVinculo('')
     if (duplicadas > 0) setErro(`${duplicadas} nota(s) já existiam e foram ignoradas.`)
     await carregar()
@@ -344,8 +352,32 @@ export default function EntradaNotas() {
                     {n.numero_nota && <div><span className="text-gray-400">Nº nota:</span> <span className="font-medium">{n.numero_nota}</span></div>}
                     {n.emitida_em && <div><span className="text-gray-400">Emissão:</span> <span className="font-medium">{fmtDataBR(n.emitida_em)}</span></div>}
                     <div><span className="text-gray-400">Itens:</span> <span className="font-medium">{n.itens.length}</span></div>
-                    {n.vfrete_nf > 0 && <div><span className="text-gray-400">Frete:</span> <span className="font-medium">{fmt(n.vfrete_nf)}</span></div>}
+                    {n.vfrete_nf > 0 && <div><span className="text-gray-400">Frete NF:</span> <span className="font-medium">{fmt(n.vfrete_nf)}</span></div>}
                     {n.vdesc_nf > 0 && <div><span className="text-gray-400">Desconto:</span> <span className="font-medium text-green-600">-{fmt(n.vdesc_nf)}</span></div>}
+                  </div>
+                  {/* Campo ST guia separada */}
+                  <div className="px-4 pb-3 flex items-center gap-3 border-t border-gray-100 pt-2.5">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        ST guia separada <span className="text-gray-400 font-normal">(se houver)</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
+                        <input
+                          type="number" min="0" step="0.01"
+                          placeholder="0,00"
+                          className="input w-full pl-7 text-xs py-1.5"
+                          value={stValues[i] || ''}
+                          onChange={e => setStValues(prev => prev.map((v, idx) => idx === i ? parseFloat(e.target.value) || 0 : v))}
+                        />
+                      </div>
+                    </div>
+                    {(stValues[i] ?? 0) > 0 && (
+                      <div className="text-xs text-orange-600 bg-orange-50 rounded-lg px-3 py-2 shrink-0">
+                        <p className="font-medium">ST: {fmt(stValues[i])}</p>
+                        <p className="text-orange-400">Rateado por produto</p>
+                      </div>
+                    )}
                   </div>
                   {n.itens.length > 0 && (
                     <div className="border-t border-gray-100 max-h-48 overflow-y-auto">
