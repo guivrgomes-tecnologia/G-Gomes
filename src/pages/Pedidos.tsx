@@ -48,6 +48,7 @@ type Pedido = {
   valor_nota: number | null
   status: string
   created_at: string
+  data_faturamento: string | null
 }
 
 type EntradaNota = {
@@ -65,6 +66,7 @@ type ConferenciaData = {
 
 const STATUS_CONFIG = {
   PENDENTE:  { label: 'Pendente',  cor: 'bg-yellow-100 text-yellow-700', icon: Clock },
+  APROVADO:  { label: 'Aprovado',  cor: 'bg-blue-100 text-blue-700',     icon: CheckCircle2 },
   ENTREGUE:  { label: 'Entregue', cor: 'bg-green-100 text-green-700',   icon: CheckCircle2 },
   CANCELADO: { label: 'Cancelado', cor: 'bg-red-100 text-red-700',      icon: XCircle },
 }
@@ -998,6 +1000,12 @@ export default function Pedidos() {
                         <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Aprovação</p>
                         <p className="text-sm text-gray-700">{fmtDate(primeiro.data_aprovacao)}</p>
                       </div>
+                      {primeiro.data_faturamento && (
+                        <div>
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Faturar a partir de</p>
+                          <p className="text-sm font-semibold text-blue-700">{fmtDate(primeiro.data_faturamento)}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Fornecedor</p>
                         <p className="text-sm font-semibold text-gray-900 truncate">{primeiro.fornecedor ?? '—'}</p>

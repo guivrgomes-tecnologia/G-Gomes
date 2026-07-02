@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Landmark, AlertTriangle, CalendarClock, CalendarCheck, CalendarRange, X } from 'lucide-react'
+import { Landmark, AlertTriangle, CalendarClock, CalendarCheck, CalendarRange, X, Package, CheckCircle2, ChevronRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 type Lancamento = {
@@ -16,6 +16,28 @@ type Lancamento = {
   redirecionado_para?: string | null
 }
 
+type Pedido = {
+  id: string
+  grupo_id: string
+  numero_pedido: number | null
+  fornecedor: string | null
+  data_pedido: string | null
+  prazo_pagamento: number[]
+  valor_pedido: number | null
+  loja_nome: string | null
+  status: string
+}
+
+type GrupoPedido = {
+  grupo_id: string
+  numero_pedido: number | null
+  fornecedor: string | null
+  data_pedido: string | null
+  prazo_pagamento: number[]
+  valor_total: number
+  lojas: string[]
+}
+
 const CAMPOS_SELECT = 'id, empresa, fornecedor, nota, descricao, vencimento, valor, juros, pago, pagamento, redirecionado_para'
 
 function localDate(d: Date) {
@@ -27,6 +49,8 @@ function somarValor(itens: Lancamento[]) {
 }
 
 const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtDate = (d: string | null | undefined) =>
+  d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
 
 export default function FinanceiroDashboard() {
   const [loading, setLoading] = useState(true)
@@ -35,6 +59,10 @@ export default function FinanceiroDashboard() {
   const [aVencerMesAtual, setAVencerMesAtual] = useState<Lancamento[]>([])
   const [pagamentosProximoMes, setPagamentosProximoMes] = useState<Lancamento[]>([])
   const [mostrarVencidos, setMostrarVencidos] = useState(false)
+  const [pedidosPendentes, setPedidosPendentes] = useState<GrupoPedido[]>([])
+  const [pedidoSelecionado, setPedidoSelecionado] = useState<GrupoPedido | null>(null)
+  const [dataFaturamento, setDataFaturamento] = useState('')
+  const [aprovando, setAprovando] = useState(false)
 
   useEffect(() => { carregar() }, [])
 
@@ -49,22 +77,54 @@ export default function FinanceiroDashboard() {
     const inicioProximoMes = localDate(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1))
     const fimProximoMes = localDate(new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0))
 
-    const [{ data: vencidos }, { data: mesAtual }, { data: proximoMes }] = await Promise.all([
+    const [{ data: vencidos }, { data: mesAtual }, { data: proximoMes }, { data: pedidos }] = await Promise.all([
       supabase.from('financeiro_lancamentos').select(CAMPOS_SELECT)
         .gte('vencimento', localDate(umMesAtras)).lt('vencimento', hojeStr),
       supabase.from('financeiro_lancamentos').select(CAMPOS_SELECT)
         .gte('vencimento', inicioMesAtual).lte('vencimento', fimMesAtual),
       supabase.from('financeiro_lancamentos').select(CAMPOS_SELECT)
         .gte('vencimento', inicioProximoMes).lte('vencimento', fimProximoMes),
+      supabase.from('pedidos').select('id, grupo_id, numero_pedido, fornecedor, data_pedido, prazo_pagamento, valor_pedido, loja_nome, status')
+        .eq('status', 'PENDENTE').order('numero_pedido', { ascending: false }),
     ])
 
-    // "Vencido sem baixa": passou da data e não tem data de pagamento registrada na planilha (campo
-    // `pagamento`) — não conta o que já foi adiado pra outro dia, porque esse já tem um plano novo.
     setVencidosUltimoMes((vencidos ?? []).filter(l => !l.pagamento && !l.redirecionado_para))
     setPagamentosMesAtual((mesAtual ?? []).filter(l => !l.redirecionado_para))
     setAVencerMesAtual((mesAtual ?? []).filter(l => !l.redirecionado_para && !l.pagamento && (l.vencimento ?? '') >= hojeStr))
     setPagamentosProximoMes((proximoMes ?? []).filter(l => !l.redirecionado_para))
+
+    // Agrupa pedidos por grupo_id
+    const grupos: Record<string, GrupoPedido> = {}
+    for (const p of (pedidos ?? []) as Pedido[]) {
+      if (!grupos[p.grupo_id]) {
+        grupos[p.grupo_id] = {
+          grupo_id: p.grupo_id,
+          numero_pedido: p.numero_pedido,
+          fornecedor: p.fornecedor,
+          data_pedido: p.data_pedido,
+          prazo_pagamento: p.prazo_pagamento ?? [],
+          valor_total: 0,
+          lojas: [],
+        }
+      }
+      grupos[p.grupo_id].valor_total += p.valor_pedido ?? 0
+      if (p.loja_nome) grupos[p.grupo_id].lojas.push(p.loja_nome)
+    }
+    setPedidosPendentes(Object.values(grupos))
+
     setLoading(false)
+  }
+
+  async function aprovarPedido() {
+    if (!pedidoSelecionado || !dataFaturamento) return
+    setAprovando(true)
+    await supabase.from('pedidos')
+      .update({ status: 'APROVADO', data_faturamento: dataFaturamento })
+      .eq('grupo_id', pedidoSelecionado.grupo_id)
+    setPedidosPendentes(prev => prev.filter(p => p.grupo_id !== pedidoSelecionado.grupo_id))
+    setPedidoSelecionado(null)
+    setDataFaturamento('')
+    setAprovando(false)
   }
 
   const cards = [
@@ -104,16 +164,123 @@ export default function FinanceiroDashboard() {
       {loading ? (
         <div className="card p-12 text-center text-gray-400">Carregando...</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {cards.map(c => (
-            <div key={c.label} onClick={c.onClick}
-              className={`rounded-xl border p-4 ${c.cor} ${c.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
-              <c.icon size={20} className={c.iconCor} />
-              <p className="text-xs font-semibold mt-2.5">{c.label}</p>
-              <p className="text-2xl font-bold mt-1">{fmt(c.valor)}</p>
-              <p className="text-[11px] opacity-70 mt-1">{c.qtd} lançamento{c.qtd === 1 ? '' : 's'} · {c.sub}</p>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {cards.map(c => (
+              <div key={c.label} onClick={c.onClick}
+                className={`rounded-xl border p-4 ${c.cor} ${c.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}>
+                <c.icon size={20} className={c.iconCor} />
+                <p className="text-xs font-semibold mt-2.5">{c.label}</p>
+                <p className="text-2xl font-bold mt-1">{fmt(c.valor)}</p>
+                <p className="text-[11px] opacity-70 mt-1">{c.qtd} lançamento{c.qtd === 1 ? '' : 's'} · {c.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Pedidos pendentes de aprovação */}
+          <div className="mb-2 flex items-center gap-2">
+            <Package size={18} className="text-yellow-500" />
+            <h2 className="text-base font-semibold text-gray-900">Pedidos aguardando aprovação</h2>
+            {pedidosPendentes.length > 0 && (
+              <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">{pedidosPendentes.length}</span>
+            )}
+          </div>
+
+          {pedidosPendentes.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-400">
+              Nenhum pedido pendente de aprovação.
             </div>
-          ))}
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
+              {pedidosPendentes.map(p => (
+                <button key={p.grupo_id} onClick={() => { setPedidoSelecionado(p); setDataFaturamento('') }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                  <div className="w-9 h-9 rounded-lg bg-yellow-100 flex items-center justify-center shrink-0">
+                    <Package size={16} className="text-yellow-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {p.numero_pedido && (
+                        <span className="text-xs font-semibold text-gray-400">#{String(p.numero_pedido).padStart(3, '0')}</span>
+                      )}
+                      <span className="text-sm font-semibold text-gray-900 truncate">{p.fornecedor ?? '—'}</span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      <span className="text-xs text-gray-400">Pedido: {fmtDate(p.data_pedido)}</span>
+                      {p.prazo_pagamento?.length > 0 && (
+                        <span className="text-xs text-gray-400">Prazo: {p.prazo_pagamento.join('/')} dias</span>
+                      )}
+                      {p.lojas.length > 0 && (
+                        <span className="text-xs text-gray-400 truncate">{p.lojas.length} loja{p.lojas.length > 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-semibold text-gray-900">{fmt(p.valor_total)}</div>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-300 shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Modal de aprovação */}
+      {pedidoSelecionado && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPedidoSelecionado(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <Package size={17} className="text-yellow-500" />
+                Aprovar pedido
+              </h3>
+              <button onClick={() => setPedidoSelecionado(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1.5">
+                {pedidoSelecionado.numero_pedido && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Pedido</span>
+                    <span className="font-semibold">#{String(pedidoSelecionado.numero_pedido).padStart(3, '0')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Fornecedor</span>
+                  <span className="font-semibold">{pedidoSelecionado.fornecedor ?? '—'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Valor total</span>
+                  <span className="font-semibold">{fmt(pedidoSelecionado.valor_total)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Prazo</span>
+                  <span className="font-semibold">{pedidoSelecionado.prazo_pagamento?.join('/') ?? '—'} dias</span>
+                </div>
+                {pedidoSelecionado.lojas.length > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Lojas</span>
+                    <span className="font-semibold text-right max-w-[60%]">{pedidoSelecionado.lojas.join(', ')}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Faturar a partir de</label>
+                <input type="date" className="input" value={dataFaturamento}
+                  onChange={e => setDataFaturamento(e.target.value)} />
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button onClick={() => setPedidoSelecionado(null)}
+                className="btn-secondary text-sm px-4 py-2">Cancelar</button>
+              <button onClick={aprovarPedido} disabled={!dataFaturamento || aprovando}
+                className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5">
+                <CheckCircle2 size={15} />
+                {aprovando ? 'Aprovando...' : 'Aprovar pedido'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
