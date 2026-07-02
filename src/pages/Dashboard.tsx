@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, Flame, ArrowRight, Package } from 'lucide-react'
-import { supabase, Evento, Pendencia } from '../lib/supabase'
+import { supabase, Evento, Pendencia, criarNotificacoes } from '../lib/supabase'
+import ChatPedido from '../components/ChatPedido'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
 import PendenciaDetalheModal from '../components/PendenciaDetalheModal'
@@ -23,7 +24,12 @@ export default function Dashboard() {
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
   const [pendenciasSolucao, setPendenciasSolucao] = useState<Pendencia[]>([])
-  const [pedidosPendentes, setPedidosPendentes] = useState<{ grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number }[]>([])
+  const [pedidosPendentes, setPedidosPendentes] = useState<{ grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number; prazo_pagamento: number[]; lojas: string[] }[]>([])
+  const [pedidoSelecionado, setPedidoSelecionado] = useState<typeof pedidosPendentes[0] | null>(null)
+  const [dataFaturamento, setDataFaturamento] = useState('')
+  const [aprovando, setAprovando] = useState(false)
+  const [semanaTotal, setSemanaTotal] = useState<{ total: number; qtd: number; inicio: string; fim: string } | null>(null)
+  const [carregandoSemana, setCarregandoSemana] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showAtrasados, setShowAtrasados] = useState(false)
   const [eventosAtrasados, setEventosAtrasados] = useState<Evento[]>([])
@@ -150,18 +156,61 @@ export default function Dashboard() {
     })
     // Pedidos pendentes de aprovação
     const { data: pedidos } = await supabase
-      .from('pedidos').select('grupo_id, numero_pedido, fornecedor, valor_pedido')
+      .from('pedidos').select('grupo_id, numero_pedido, fornecedor, valor_pedido, prazo_pagamento, loja_nome')
       .eq('status', 'PENDENTE').order('numero_pedido', { ascending: false })
-    const grupos: Record<string, { grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number }> = {}
+    const grupos: Record<string, { grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number; prazo_pagamento: number[]; lojas: string[] }> = {}
     for (const p of (pedidos ?? []) as any[]) {
-      if (!grupos[p.grupo_id]) grupos[p.grupo_id] = { grupo_id: p.grupo_id, numero_pedido: p.numero_pedido, fornecedor: p.fornecedor, valor_total: 0 }
+      if (!grupos[p.grupo_id]) grupos[p.grupo_id] = { grupo_id: p.grupo_id, numero_pedido: p.numero_pedido, fornecedor: p.fornecedor, valor_total: 0, prazo_pagamento: p.prazo_pagamento ?? [], lojas: [] }
       grupos[p.grupo_id].valor_total += p.valor_pedido ?? 0
+      if (p.loja_nome) grupos[p.grupo_id].lojas.push(p.loja_nome)
     }
     setPedidosPendentes(Object.values(grupos))
 
     setLoading(false)
   }
 
+
+  useEffect(() => {
+    if (!dataFaturamento) { setSemanaTotal(null); return }
+    buscarSemana(dataFaturamento)
+  }, [dataFaturamento])
+
+  function localDate(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+  }
+
+  async function buscarSemana(data: string) {
+    setCarregandoSemana(true)
+    const d = new Date(data + 'T12:00:00')
+    const diaSemana = d.getDay()
+    const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana
+    const seg = new Date(d); seg.setDate(d.getDate() + diffSeg)
+    const dom = new Date(seg); dom.setDate(seg.getDate() + 6)
+    const inicio = localDate(seg); const fim = localDate(dom)
+    const { data: rows } = await supabase.from('financeiro_lancamentos')
+      .select('valor, juros, redirecionado_para').gte('vencimento', inicio).lte('vencimento', fim)
+    const ativos = (rows ?? []).filter((l: any) => !l.redirecionado_para)
+    const total = ativos.reduce((s: number, l: any) => s + (l.valor ?? 0) + (l.juros ?? 0), 0)
+    setSemanaTotal({ total, qtd: ativos.length, inicio, fim })
+    setCarregandoSemana(false)
+  }
+
+  async function aprovarPedido() {
+    if (!pedidoSelecionado || !dataFaturamento) return
+    setAprovando(true)
+    await supabase.from('pedidos')
+      .update({ status: 'APROVADO', data_faturamento: dataFaturamento })
+      .eq('grupo_id', pedidoSelecionado.grupo_id)
+    const { data: rows } = await supabase.from('pedidos').select('created_by').eq('grupo_id', pedidoSelecionado.grupo_id).limit(1)
+    const criadorId = (rows?.[0] as any)?.created_by
+    if (criadorId) {
+      const fmtData = new Date(dataFaturamento + 'T12:00:00').toLocaleDateString('pt-BR')
+      await criarNotificacoes([{ usuario_id: criadorId, tipo: 'pedido_aprovado', titulo: `Pedido aprovado: ${pedidoSelecionado.fornecedor ?? ''}`, mensagem: `Faturar a partir de ${fmtData}`, link: '/pedidos' }])
+    }
+    setPedidosPendentes(prev => prev.filter(p => p.grupo_id !== pedidoSelecionado.grupo_id))
+    setPedidoSelecionado(null); setDataFaturamento(''); setSemanaTotal(null)
+    setAprovando(false)
+  }
 
   async function abrirEvento(ev: Evento) {
     const { data: pendData } = await supabase.from('pendencias').select('id').eq('evento_id', ev.id).order('created_at', { ascending: false }).limit(1)
@@ -333,8 +382,8 @@ export default function Dashboard() {
                 <ul className="divide-y divide-gray-100 max-h-[180px] overflow-y-auto">
                   {pedidosPendentes.map(p => (
                     <li key={p.grupo_id}>
-                      <Link to="/financeiro/dashboard"
-                        className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                      <button onClick={() => { setPedidoSelecionado(p); setDataFaturamento('') }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left">
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-gray-900 truncate">
                             {p.numero_pedido != null && <span className="text-gray-400">#{String(p.numero_pedido).padStart(3,'0')} · </span>}
@@ -342,7 +391,8 @@ export default function Dashboard() {
                           </p>
                           <p className="text-xs text-gray-400">{p.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                         </div>
-                      </Link>
+                        <ArrowRight size={12} className="text-gray-300 shrink-0" />
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -614,6 +664,65 @@ export default function Dashboard() {
       )}
       {eventoModalId && (
         <EventoDetalheModal eventoId={eventoModalId} onClose={() => setEventoModalId(null)} onChanged={load} />
+      )}
+
+      {/* Modal de aprovação de pedido */}
+      {pedidoSelecionado && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPedidoSelecionado(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <Package size={17} className="text-yellow-500" /> Aprovar pedido
+              </h3>
+              <button onClick={() => setPedidoSelecionado(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-1.5">
+                {pedidoSelecionado.numero_pedido != null && (
+                  <div className="flex justify-between text-xs"><span className="text-gray-500">Pedido</span><span className="font-semibold">#{String(pedidoSelecionado.numero_pedido).padStart(3,'0')}</span></div>
+                )}
+                <div className="flex justify-between text-xs"><span className="text-gray-500">Fornecedor</span><span className="font-semibold">{pedidoSelecionado.fornecedor ?? '—'}</span></div>
+                <div className="flex justify-between text-xs"><span className="text-gray-500">Valor total</span><span className="font-semibold">{pedidoSelecionado.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                {pedidoSelecionado.prazo_pagamento?.length > 0 && (
+                  <div className="flex justify-between text-xs"><span className="text-gray-500">Prazo</span><span className="font-semibold">{pedidoSelecionado.prazo_pagamento.join('/')} dias</span></div>
+                )}
+                {pedidoSelecionado.lojas.length > 0 && (
+                  <div className="flex justify-between text-xs"><span className="text-gray-500">Lojas</span><span className="font-semibold text-right max-w-[60%]">{pedidoSelecionado.lojas.join(', ')}</span></div>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Faturar a partir de</label>
+                <input type="date" className="input" value={dataFaturamento} onChange={e => setDataFaturamento(e.target.value)} />
+              </div>
+              {dataFaturamento && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${carregandoSemana ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-blue-200 bg-blue-50'}`}>
+                  {carregandoSemana ? <span>Calculando...</span> : semanaTotal && (
+                    <>
+                      <div className="text-xs text-blue-500 font-medium mb-1">
+                        Semana de {new Date(semanaTotal.inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a {new Date(semanaTotal.fim + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-blue-700 font-semibold text-base">{semanaTotal.total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                        <span className="text-xs text-blue-500">{semanaTotal.qtd} lançamento{semanaTotal.qtd !== 1 ? 's' : ''} na programação</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="px-5 pb-4 max-h-64 overflow-y-auto">
+              <ChatPedido grupoId={pedidoSelecionado.grupo_id} fornecedor={pedidoSelecionado.fornecedor} />
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
+              <button onClick={() => setPedidoSelecionado(null)} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
+              <button onClick={aprovarPedido} disabled={!dataFaturamento || aprovando}
+                className="btn-primary text-sm px-4 py-2 flex items-center gap-1.5">
+                <CheckCircle2 size={15} />
+                {aprovando ? 'Aprovando...' : 'Aprovar pedido'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
