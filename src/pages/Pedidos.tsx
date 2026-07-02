@@ -1550,10 +1550,44 @@ export default function Pedidos() {
               <button onClick={() => setPendingImport(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
-              <div className="text-xs bg-gray-50 rounded-lg px-3 py-2 space-y-0.5">
-                <p><span className="text-gray-400">Fornecedor:</span> <span className="font-semibold text-gray-800">{pendingImport.fornecedor}</span></p>
-                <p><span className="text-gray-400">Prazo:</span> <span className="font-semibold text-gray-800">{pendingImport.prazos.join('/')} dias</span></p>
-                <p><span className="text-gray-400">Produtos:</span> <span className="font-semibold text-gray-800">{(pendingImport.dados as object[]).length} itens</span></p>
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{pendingImport.fornecedor || '—'}</p>
+                    <p className="text-xs text-gray-500">Prazo: {pendingImport.prazos.join('/')} dias</p>
+                  </div>
+                  <span className="text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-medium">
+                    {(pendingImport.dados as object[]).length} itens
+                  </span>
+                </div>
+                {(pendingImport.dados as { codigo: string; descricao: string; lojas: Record<string, { nome: string; qty: number }> }[]).length > 0 && (
+                  <div className="max-h-48 overflow-y-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Produto</th>
+                          <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Lojas</th>
+                          <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Qtd total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {(pendingImport.dados as { codigo: string; descricao: string; lojas: Record<string, { nome: string; qty: number }> }[]).map((item, i) => {
+                          const totalQty = Object.values(item.lojas).reduce((s, l) => s + l.qty, 0)
+                          const nomesLojas = Object.values(item.lojas).map(l => l.nome).join(', ')
+                          return (
+                            <tr key={i} className="hover:bg-gray-50/50">
+                              <td className="px-3 py-1.5 text-gray-700 leading-tight">
+                                <span className="text-gray-400 mr-1">{item.codigo}</span>{item.descricao}
+                              </td>
+                              <td className="px-3 py-1.5 text-right text-gray-400 text-[10px]">{nomesLojas}</td>
+                              <td className="px-3 py-1.5 text-right font-medium text-gray-800">{totalQty}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Data do pedido <span className="text-red-500">*</span></label>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Trash2, FileText, AlertCircle, Plus, X, Calculator } from 'lucide-react'
+import { Upload, Trash2, FileText, AlertCircle, Plus, X, Calculator, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { parseNFeXML, FILIAL_SIGLA } from '../lib/nfeXmlHelper'
+import { parseNFeXML, FILIAL_SIGLA, type NotaParseada } from '../lib/nfeXmlHelper'
 
 type NotaEntrada = {
   id: string
@@ -39,6 +39,7 @@ export default function EntradaNotas() {
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
   const [arrastando, setArrastando] = useState(false)
+  const [pendingXml, setPendingXml] = useState<NotaParseada[]>([])
   const [editBuffer, setEditBuffer] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
   const [salvandoManual, setSalvandoManual] = useState(false)
@@ -64,12 +65,24 @@ export default function EntradaNotas() {
     if (lista.length === 0) return
     setEnviando(true)
     setErro('')
+    const parsedList: NotaParseada[] = []
     let falhas = 0
-    let duplicadas = 0
     for (const file of lista) {
       const texto = await file.text()
       const parsed = parseNFeXML(texto)
       if (!parsed) { falhas++; continue }
+      parsedList.push(parsed)
+    }
+    setEnviando(false)
+    if (falhas > 0) setErro(`${falhas} arquivo(s) não eram XML de NFe válido e foram ignorados.`)
+    if (parsedList.length > 0) setPendingXml(parsedList)
+  }
+
+  async function confirmarXml() {
+    if (pendingXml.length === 0) return
+    setEnviando(true)
+    let duplicadas = 0
+    for (const parsed of pendingXml) {
       if (parsed.chave_acesso) {
         const { data: existente } = await supabase.from('entrada_notas_fiscais').select('id').eq('chave_acesso', parsed.chave_acesso).maybeSingle()
         if (existente) { duplicadas++; continue }
@@ -88,8 +101,8 @@ export default function EntradaNotas() {
       }
     }
     setEnviando(false)
-    if (falhas > 0) setErro(`${falhas} arquivo(s) não eram XML de NFe válido e foram ignorados.${duplicadas > 0 ? ` ${duplicadas} já existiam (chave de acesso repetida) e também foram ignoradas.` : ''}`)
-    else if (duplicadas > 0) setErro(`${duplicadas} nota(s) já existiam (chave de acesso repetida) e foram ignoradas.`)
+    setPendingXml([])
+    if (duplicadas > 0) setErro(`${duplicadas} nota(s) já existiam e foram ignoradas.`)
     await carregar()
   }
 
@@ -281,6 +294,73 @@ export default function EntradaNotas() {
             </table>
           </div>
         </>
+      )}
+
+      {/* Preview de notas XML antes de salvar */}
+      {pendingXml.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPendingXml([])}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <FileText size={16} className="text-brand-500" />
+                {pendingXml.length === 1 ? 'Confirmar nota fiscal' : `Confirmar ${pendingXml.length} notas fiscais`}
+              </h3>
+              <button onClick={() => setPendingXml([])} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {pendingXml.map((n, i) => (
+                <div key={i} className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{n.fornecedor ?? n.razao_social ?? '—'}</p>
+                      <p className="text-xs text-gray-500">{n.razao_social}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-brand-600">{fmt(n.valor_total)}</p>
+                      {n.loja && <span className="text-xs bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded font-medium">{n.loja}</span>}
+                    </div>
+                  </div>
+                  <div className="px-4 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    {n.numero_nota && <div><span className="text-gray-400">Nº nota:</span> <span className="font-medium">{n.numero_nota}</span></div>}
+                    {n.emitida_em && <div><span className="text-gray-400">Emissão:</span> <span className="font-medium">{fmtDataBR(n.emitida_em)}</span></div>}
+                    <div><span className="text-gray-400">Itens:</span> <span className="font-medium">{n.itens.length}</span></div>
+                    {n.vfrete_nf > 0 && <div><span className="text-gray-400">Frete:</span> <span className="font-medium">{fmt(n.vfrete_nf)}</span></div>}
+                    {n.vdesc_nf > 0 && <div><span className="text-gray-400">Desconto:</span> <span className="font-medium text-green-600">-{fmt(n.vdesc_nf)}</span></div>}
+                  </div>
+                  {n.itens.length > 0 && (
+                    <div className="border-t border-gray-100 max-h-48 overflow-y-auto">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 text-gray-500 font-medium">Produto</th>
+                            <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Qtd</th>
+                            <th className="text-right px-3 py-1.5 text-gray-500 font-medium">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {n.itens.map((it, j) => (
+                            <tr key={j} className="hover:bg-gray-50/50">
+                              <td className="px-3 py-1.5 text-gray-700 leading-tight">{it.xprod ?? '—'}</td>
+                              <td className="px-3 py-1.5 text-right text-gray-500">{it.qcom}</td>
+                              <td className="px-3 py-1.5 text-right font-medium text-gray-800">{fmt(it.vprod)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-3 shrink-0">
+              <button onClick={() => setPendingXml([])} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={confirmarXml} disabled={enviando} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
+                <CheckCircle2 size={15} />
+                {enviando ? 'Salvando...' : `Salvar ${pendingXml.length > 1 ? pendingXml.length + ' notas' : 'nota'}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showManual && (
