@@ -756,7 +756,8 @@ export default function Pedidos() {
       ])
 
       await abrirVisualizacao(visualizarGrupoId)
-      alert(`Reimportado: ${toUpdate.length} itens atualizados, ${toInsert.length} novos.`)
+      const debugCols = storeCols.map(s => `col${s.colQtd}=${s.loja?.nome ?? 'NÃO MAPEADA'}`).join(', ')
+      alert(`Reimportado: ${toUpdate.length} itens atualizados, ${toInsert.length} novos.\n\nDEBUG: headerIdx=${headerIdxR}, firstStoreCol=${firstStoreColR}\nColunas (${storeCols.length}): ${debugCols || 'NENHUMA'}`)
     } catch (err) {
       alert('Erro ao reimportar: ' + (err instanceof Error ? err.message : String(err)))
     }
