@@ -226,7 +226,7 @@ export default function EntradaNotas() {
               </thead>
               <tbody>
                 {notasDoMes.map(n => (
-                  <tr key={n.id} className="border-t border-gray-100 hover:bg-gray-50/60">
+                  <tr key={n.id} className="border-t border-gray-400 hover:bg-gray-50/60">
                     <td className="p-3 font-medium text-gray-800 sticky left-0 bg-white whitespace-nowrap">{n.razao_social ?? '—'}</td>
                     <td className="p-2">
                       <select className="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white" value={n.loja ?? ''}
@@ -272,7 +272,7 @@ export default function EntradaNotas() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
+                <tr className="border-t-2 border-gray-400 font-semibold bg-gray-50">
                   <td colSpan={10} className="p-3 text-right">Total do mês</td>
                   <td className="p-3 text-right text-emerald-700">{fmt(totalDoMes)}</td>
                   <td></td>
