@@ -393,16 +393,38 @@ export default function Pedidos() {
       const ws = wb.Sheets[wb.SheetNames[0]]
       const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
 
-      // Fornecedor e prazo: linha 7, col B (índice 1)
-      const fornecedorRaw = String(raw[6]?.[1] ?? '').trim()
+      // Detecta dinamicamente a linha de cabeçalho (contém "CÓDIGO" na col 0)
+      let headerIdx = -1
+      for (let i = 0; i < raw.length; i++) {
+        const c0 = String(raw[i]?.[0] ?? '').trim().toUpperCase()
+        if (c0 === 'CÓDIGO' || c0 === 'CODIGO') { headerIdx = i; break }
+      }
+      if (headerIdx < 0) throw new Error('Não encontrei a linha de cabeçalho (CÓDIGO) no arquivo.')
+
+      // Fornecedor: varre linhas antes do header procurando "FORNECEDOR:"
+      let fornecedorRaw = ''
+      for (let i = 0; i < headerIdx; i++) {
+        const row = raw[i] as unknown[]
+        for (let c = 0; c < (row?.length ?? 0); c++) {
+          const v = String(row?.[c] ?? '').trim()
+          if (v.toUpperCase().startsWith('FORNECEDOR')) {
+            // valor pode estar na mesma célula após ":" ou na próxima
+            const partes = v.split(':')
+            fornecedorRaw = partes.length > 1 ? partes.slice(1).join(':').trim() : String(row?.[c + 1] ?? '').trim()
+            break
+          }
+        }
+        if (fornecedorRaw) break
+      }
       const fornecedor = fornecedorRaw.replace(/\s+\d+\/\d+.*$/i, '').trim() || fornecedorRaw
 
       // Prazo: extrair números de "30/60/90"
       const prazoMatch = fornecedorRaw.match(/(\d+(?:\/\d+)+)/)
       const prazos = prazoMatch ? prazoMatch[1].split('/').map(Number) : [30, 60, 90]
 
-      // CNPJs: linha 11 (índice 10), a partir da col M (índice 12), posições pares
-      const cnpjRow = raw[10] as (string | null)[]
+      // Linha de CNPJs: a linha imediatamente acima do header
+      const cnpjRow = (headerIdx > 0 ? raw[headerIdx - 1] : []) as (string | null)[]
+
       // Monta mapa CNPJ → loja
       const lojasByCnpj: Record<string, ConfigLoja> = {}
       for (const l of lojas) {
@@ -412,13 +434,22 @@ export default function Pedidos() {
         }
       }
 
-      // Colunas de lojas: a partir do índice 12, pares (qtd, valor)
-      // Cada par de 2 em 2: col 12+0=qtd, col 12+1=valor, col 12+2=qtd, ...
-      // CNPJ da loja está na linha 11, no índice da coluna de qtd
+      // Colunas de lojas: a partir da primeira coluna após "PREÇO F." (ou similar)
+      // Detecta onde começam as colunas de loja (primeira coluna após as fixas)
+      const headerRow = raw[headerIdx] as (string | null)[]
+      // Colunas fixas conhecidas: CÓDIGO, DESCRIÇÃO, tamanho, CX, PREÇO U., DESCONTO*, IPI, SUGERIDO, PREÇO F.
+      // Detecta a última coluna fixa procurando "PREÇO F" ou "PRECO F" (case-insensitive)
+      let firstStoreCol = 4 // fallback
+      for (let c = 0; c < (headerRow?.length ?? 0); c++) {
+        const h = String(headerRow?.[c] ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+        if (h.startsWith('PRECOF') || h.startsWith('PREÇOF') || h === 'PRECOFINAL' || h === 'SUGERIDO') {
+          firstStoreCol = c + 1
+        }
+      }
+
       type StoreCol = { colQtd: number; colVal: number; cnpj: string; loja: ConfigLoja | undefined; nome: string }
       const storeCols: StoreCol[] = []
-      const headerRow = raw[11] as (string | null)[]
-      let col = 12
+      let col = firstStoreCol
       while (col + 1 < (headerRow?.length ?? 0)) {
         const nomeCol = String(headerRow?.[col] ?? '').trim()
         if (!nomeCol || nomeCol.toUpperCase() === 'TOTAL') break
@@ -431,11 +462,14 @@ export default function Pedidos() {
         col += 2
       }
 
-      // Produtos: linhas 13+ (índice 12+), onde col A tem código e col B tem descrição
+      // Índice da coluna PREÇO F. para preco_final
+      const precofIdx = firstStoreCol - 1
+
+      // Produtos: linhas após o header
       type ItemRow = { codigo: string; descricao: string; tamanho: string; qt_caixa: number | null; preco_unitario: number | null; preco_final: number | null; lojas: Record<string, { nome: string; qty: number; valor: number }> }
       const itensImport: ItemRow[] = []
 
-      for (let r = 12; r < raw.length; r++) {
+      for (let r = headerIdx + 1; r < raw.length; r++) {
         const row = raw[r] as (unknown)[]
         const codigo = row?.[0]
         const descricao = String(row?.[1] ?? '').trim()
@@ -462,7 +496,7 @@ export default function Pedidos() {
           tamanho: String(row?.[2] ?? '').trim(),
           qt_caixa: Number(row?.[3]) || null,
           preco_unitario: Number(row?.[4]) || null,
-          preco_final: Number(row?.[11]) || null,
+          preco_final: Number(row?.[precofIdx]) || null,
           lojas: lojaQtds,
         })
       }
@@ -628,16 +662,35 @@ export default function Pedidos() {
       const ws = wb.Sheets[wb.SheetNames[0]]
       const raw = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: null })
 
-      const cnpjRow = raw[10] as (string | null)[]
       const lojasByCnpj: Record<string, ConfigLoja> = {}
       for (const l of lojas) {
         if (l.cnpj) lojasByCnpj[l.cnpj.replace(/[.\-\/]/g, '').trim()] = l
       }
 
+      // Detecta linha de cabeçalho dinamicamente
+      let headerIdxR = -1
+      for (let i = 0; i < raw.length; i++) {
+        const c0 = String(raw[i]?.[0] ?? '').trim().toUpperCase()
+        if (c0 === 'CÓDIGO' || c0 === 'CODIGO') { headerIdxR = i; break }
+      }
+      if (headerIdxR < 0) throw new Error('Não encontrei a linha de cabeçalho (CÓDIGO) no arquivo.')
+
+      const cnpjRow = (headerIdxR > 0 ? raw[headerIdxR - 1] : []) as (string | null)[]
+      const headerRow = raw[headerIdxR] as (string | null)[]
+
+      // Detecta primeira coluna de loja (após PREÇO F.)
+      let firstStoreColR = 4
+      for (let c = 0; c < (headerRow?.length ?? 0); c++) {
+        const h = String(headerRow?.[c] ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+        if (h.startsWith('PRECOF') || h.startsWith('PREÇOF') || h === 'PRECOFINAL' || h === 'SUGERIDO') {
+          firstStoreColR = c + 1
+        }
+      }
+      const precofIdxR = firstStoreColR - 1
+
       type StoreCol = { colQtd: number; colVal: number; loja: ConfigLoja | undefined }
       const storeCols: StoreCol[] = []
-      const headerRow = raw[11] as (string | null)[]
-      let col = 12
+      let col = firstStoreColR
       while (col + 1 < (headerRow?.length ?? 0)) {
         const nomeCol = String(headerRow?.[col] ?? '').trim()
         if (!nomeCol || nomeCol.toUpperCase() === 'TOTAL') break
@@ -659,7 +712,7 @@ export default function Pedidos() {
       const toInsert: object[] = []
       const toUpdate: { id: string; lojas: object }[] = []
 
-      for (let r = 12; r < raw.length; r++) {
+      for (let r = headerIdxR + 1; r < raw.length; r++) {
         const row = raw[r] as unknown[]
         const codigo = row?.[0]
         const descricao = String(row?.[1] ?? '').trim()
@@ -681,7 +734,6 @@ export default function Pedidos() {
 
         const existente = existentesPorCodigo[codigoStr]
         if (existente) {
-          // Mescla lojas: mantém existentes + adiciona/atualiza do novo arquivo
           const lojasAtualizadas = { ...existente.lojas, ...lojaQtds }
           toUpdate.push({ id: existente.id, lojas: lojasAtualizadas })
         } else {
@@ -692,7 +744,7 @@ export default function Pedidos() {
             tamanho: String(row?.[2] ?? '').trim() || null,
             qt_caixa: Number(row?.[3]) || null,
             preco_unitario: Number(row?.[4]) || null,
-            preco_final: Number(row?.[11]) || null,
+            preco_final: Number(row?.[precofIdxR]) || null,
             lojas: lojaQtds,
           })
         }
