@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Landmark, AlertTriangle, CalendarClock, CalendarCheck, CalendarRange, X, Package, CheckCircle2, ChevronRight } from 'lucide-react'
 import { supabase, criarNotificacoes } from '../lib/supabase'
+import ChatPedido from '../components/ChatPedido'
 
 type Lancamento = {
   id: string
@@ -335,6 +336,9 @@ export default function FinanceiroDashboard() {
                   )}
                 </div>
               )}
+            </div>
+            <div className="px-5 pb-4 max-h-64 overflow-y-auto">
+              <ChatPedido grupoId={pedidoSelecionado.grupo_id} fornecedor={pedidoSelecionado.fornecedor} />
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setPedidoSelecionado(null)}
