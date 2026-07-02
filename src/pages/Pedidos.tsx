@@ -112,6 +112,25 @@ function normNome(s: string) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+// Retorna palavras significativas (≥3 chars) de um nome normalizado
+function palavrasChave(s: string) {
+  return normNome(s).split(' ').filter(p => p.length >= 3)
+}
+
+// Verifica se dois nomes de loja são similares o suficiente
+function lojasBatem(nomeApp: string, nomeXlsx: string): boolean {
+  const nA = normNome(nomeApp)
+  const nX = normNome(nomeXlsx)
+  if (nA.includes(nX) || nX.includes(nA)) return true
+  // Palavras do xlsx que aparecem no nome da app
+  const pX = palavrasChave(nX)
+  if (pX.length === 0) return false
+  const pA = palavrasChave(nA)
+  // Se maioria das palavras-chave do xlsx aparecem no nome da app
+  const matches = pX.filter(p => pA.some(a => a.includes(p) || p.includes(a)))
+  return matches.length >= Math.ceil(pX.length * 0.6)
+}
+
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [lojas, setLojas] = useState<ConfigLoja[]>([])
@@ -406,11 +425,7 @@ export default function Pedidos() {
         const cnpjRaw = String(cnpjRow?.[col] ?? '').replace(/[.\-\/\s]/g, '')
         let loja: ConfigLoja | undefined = lojasByCnpj[cnpjRaw]
         if (!loja) {
-          const nCol = normNome(nomeCol)
-          loja = lojas.find(l => {
-            const nL = normNome(l.nome)
-            return nL.includes(nCol) || nCol.includes(nL) || nCol.split(' ').every(p => nL.includes(p))
-          }) ?? undefined
+          loja = lojas.find(l => lojasBatem(l.nome, nomeCol)) ?? undefined
         }
         storeCols.push({ colQtd: col, colVal: col + 1, cnpj: cnpjRaw, loja, nome: nomeCol })
         col += 2
@@ -629,11 +644,7 @@ export default function Pedidos() {
         const cnpjRaw = String(cnpjRow?.[col] ?? '').replace(/[.\-\/\s]/g, '')
         let loja: ConfigLoja | undefined = lojasByCnpj[cnpjRaw]
         if (!loja) {
-          const nCol = normNome(nomeCol)
-          loja = lojas.find(l => {
-            const nL = normNome(l.nome)
-            return nL.includes(nCol) || nCol.includes(nL) || nCol.split(' ').every(p => nL.includes(p))
-          }) ?? undefined
+          loja = lojas.find(l => lojasBatem(l.nome, nomeCol)) ?? undefined
         }
         storeCols.push({ colQtd: col, colVal: col + 1, loja })
         col += 2
