@@ -45,13 +45,30 @@
    documento (portal fora do #root). Qualquer modal de impressão usa uma classe começando
    com "modo-impressao" no body. */
 @media print {
+  @page {
+    margin: 8mm 10mm;
+    size: A4 portrait;
+  }
+
   body[class*="modo-impressao"] #root {
     display: none !important;
   }
-  /* Por padrão o navegador ignora cor de fundo na impressão — força manter (cabeçalhos coloridos, faixas de transferência, etc.) */
+
+  /* Força cores de fundo na impressão */
   * {
     print-color-adjust: exact !important;
     -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Garante que tabelas do CP caibam na largura da página */
+  table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+
+  td, th {
+    font-size: 8px !important;
+    padding: 2px 4px !important;
   }
 }
 

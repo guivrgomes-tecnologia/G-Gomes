@@ -370,7 +370,28 @@ export default function Historico() {
                 <tr className="border-t-2 border-gray-200 font-semibold bg-gray-50">
                   <td className="p-3 sticky left-0 bg-gray-50">TOTAL REDE</td>
                   <td className="p-3"></td>
-                  {MESES.map(m => <td key={m.key} className="p-3 text-right whitespace-nowrap">{fmt(totalPorMes(m.key))}</td>)}
+                  {MESES.map(m => {
+                    const total = totalPorMes(m.key)
+                    const total1 = anoAtivo ? lojasDoAno.reduce((s, l) => s + ((registroDe(l.id, anoAtivo - 1)?.[m.key] as number) ?? 0), 0) : 0
+                    const total2 = anoAtivo ? lojasDoAno.reduce((s, l) => s + ((registroDe(l.id, anoAtivo - 2)?.[m.key] as number) ?? 0), 0) : 0
+                    const var1 = total1 > 0 ? (total - total1) / total1 : null
+                    const var2 = total2 > 0 ? (total - total2) / total2 : null
+                    return (
+                      <td key={m.key} className="p-3 text-right whitespace-nowrap">
+                        <span>{fmt(total)}</span>
+                        {mostrarVariacao && var1 !== null && (
+                          <p className={`text-[10px] font-medium mt-0.5 ${var1 >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {var1 >= 0 ? '+' : ''}{(var1 * 100).toFixed(1)}% <span className="text-gray-400 font-normal">vs {anoAtivo! - 1}</span>
+                          </p>
+                        )}
+                        {mostrarVariacao && var2 !== null && (
+                          <p className={`text-[10px] font-medium mt-0.5 ${var2 >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {var2 >= 0 ? '+' : ''}{(var2 * 100).toFixed(1)}% <span className="text-gray-400 font-normal">vs {anoAtivo! - 2}</span>
+                          </p>
+                        )}
+                      </td>
+                    )
+                  })}
                   <td className="p-3 text-right border-l-2 border-gray-300 bg-emerald-100 whitespace-nowrap">{fmt(totalRedeAno)}</td>
                   <td></td>
                 </tr>

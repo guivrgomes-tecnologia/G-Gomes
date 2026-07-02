@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video, Users, Home, DollarSign, RotateCcw, FileText, ChevronDown, ChevronRight, FolderOpen, Target, LineChart, Percent, Landmark, Receipt, Upload, Settings } from 'lucide-react'
+import { Calendar, ClipboardList, AlertCircle, LayoutDashboard, LogOut, Building2, Bell, BellOff, Video, Users, Home, DollarSign, RotateCcw, FileText, ChevronDown, ChevronRight, FolderOpen, Target, LineChart, Percent, Landmark, Receipt, Upload, Settings, Package } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { usePushNotifications } from '../hooks/usePushNotifications'
 
@@ -30,7 +30,8 @@ const VENDAS_SUB = [
 ]
 
 const NOTAS_FISCAIS_SUB = [
-  { to: '/entrada-notas', label: 'Entrada de Notas', icon: Upload, modulo: 'notas_fiscais' },
+  { to: '/entrada-notas',        label: 'Entrada de Notas', icon: Upload,   modulo: 'notas_fiscais' },
+  { to: '/notas-fiscais/pedidos', label: 'Pedidos',          icon: Package,  modulo: 'notas_fiscais' },
 ]
 
 const FINANCEIRO_SUB = [
@@ -53,7 +54,7 @@ export default function Sidebar({ onNavigate }: { onNavigate: () => void }) {
   const [casaAberta, setCasaAberta] = useState(casaAtiva)
   const vendasAtiva = vendasSubVisivel.some(s => location.pathname === s.to)
   const [vendasAberta, setVendasAberta] = useState(vendasAtiva)
-  const notasFiscaisAtiva = notasFiscaisSubVisivel.some(s => location.pathname === s.to)
+  const notasFiscaisAtiva = notasFiscaisSubVisivel.some(s => location.pathname === s.to || location.pathname.startsWith('/notas-fiscais'))
   const [notasFiscaisAberta, setNotasFiscaisAberta] = useState(notasFiscaisAtiva)
   const financeiroAtiva = location.pathname === '/financeiro' || location.pathname.startsWith('/financeiro/')
   const [financeiroAberta, setFinanceiroAberta] = useState(financeiroAtiva)
