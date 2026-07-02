@@ -108,6 +108,10 @@ function pedidoParaForm(p: Pedido): FormState {
   }
 }
 
+function normNome(s: string) {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [lojas, setLojas] = useState<ConfigLoja[]>([])
@@ -392,7 +396,7 @@ export default function Pedidos() {
       // Colunas de lojas: a partir do índice 12, pares (qtd, valor)
       // Cada par de 2 em 2: col 12+0=qtd, col 12+1=valor, col 12+2=qtd, ...
       // CNPJ da loja está na linha 11, no índice da coluna de qtd
-      type StoreCol = { colQtd: number; colVal: number; cnpj: string; loja: ConfigLoja | null; nome: string }
+      type StoreCol = { colQtd: number; colVal: number; cnpj: string; loja: ConfigLoja | undefined; nome: string }
       const storeCols: StoreCol[] = []
       const headerRow = raw[11] as (string | null)[]
       let col = 12
@@ -400,7 +404,14 @@ export default function Pedidos() {
         const nomeCol = String(headerRow?.[col] ?? '').trim()
         if (!nomeCol || nomeCol.toUpperCase() === 'TOTAL') break
         const cnpjRaw = String(cnpjRow?.[col] ?? '').replace(/[.\-\/\s]/g, '')
-        const loja = lojasByCnpj[cnpjRaw] ?? null
+        let loja: ConfigLoja | undefined = lojasByCnpj[cnpjRaw]
+        if (!loja) {
+          const nCol = normNome(nomeCol)
+          loja = lojas.find(l => {
+            const nL = normNome(l.nome)
+            return nL.includes(nCol) || nCol.includes(nL) || nCol.split(' ').every(p => nL.includes(p))
+          }) ?? undefined
+        }
         storeCols.push({ colQtd: col, colVal: col + 1, cnpj: cnpjRaw, loja, nome: nomeCol })
         col += 2
       }
@@ -608,7 +619,7 @@ export default function Pedidos() {
         if (l.cnpj) lojasByCnpj[l.cnpj.replace(/[.\-\/]/g, '').trim()] = l
       }
 
-      type StoreCol = { colQtd: number; colVal: number; loja: ConfigLoja | null }
+      type StoreCol = { colQtd: number; colVal: number; loja: ConfigLoja | undefined }
       const storeCols: StoreCol[] = []
       const headerRow = raw[11] as (string | null)[]
       let col = 12
@@ -616,7 +627,15 @@ export default function Pedidos() {
         const nomeCol = String(headerRow?.[col] ?? '').trim()
         if (!nomeCol || nomeCol.toUpperCase() === 'TOTAL') break
         const cnpjRaw = String(cnpjRow?.[col] ?? '').replace(/[.\-\/\s]/g, '')
-        storeCols.push({ colQtd: col, colVal: col + 1, loja: lojasByCnpj[cnpjRaw] ?? null })
+        let loja: ConfigLoja | undefined = lojasByCnpj[cnpjRaw]
+        if (!loja) {
+          const nCol = normNome(nomeCol)
+          loja = lojas.find(l => {
+            const nL = normNome(l.nome)
+            return nL.includes(nCol) || nCol.includes(nL) || nCol.split(' ').every(p => nL.includes(p))
+          }) ?? undefined
+        }
+        storeCols.push({ colQtd: col, colVal: col + 1, loja })
         col += 2
       }
 
