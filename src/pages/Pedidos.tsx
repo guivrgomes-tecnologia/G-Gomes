@@ -999,7 +999,7 @@ export default function Pedidos() {
               : ''
 
             return (
-              <div key={grupoId} className={`card overflow-hidden ${todosCancelados ? 'opacity-60' : ''}`}>
+              <div key={grupoId} className={`card overflow-hidden border-gray-400 ${todosCancelados ? 'opacity-60' : ''}`}>
                 {/* ── Cabeçalho do pedido ── */}
                 <div className="px-4 pt-3 pb-3 flex items-start justify-between gap-4">
                   <div className="flex items-start gap-4 flex-1 min-w-0">
