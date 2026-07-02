@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Landmark, AlertTriangle, CalendarClock, CalendarCheck, CalendarRange, X, Package, CheckCircle2, ChevronRight } from 'lucide-react'
-import { supabase } from '../lib/supabase'
+import { supabase, criarNotificacoes } from '../lib/supabase'
 
 type Lancamento = {
   id: string
@@ -63,8 +63,34 @@ export default function FinanceiroDashboard() {
   const [pedidoSelecionado, setPedidoSelecionado] = useState<GrupoPedido | null>(null)
   const [dataFaturamento, setDataFaturamento] = useState('')
   const [aprovando, setAprovando] = useState(false)
+  const [semanaTotal, setSemanaTotal] = useState<{ total: number; qtd: number; inicio: string; fim: string } | null>(null)
+  const [carregandoSemana, setCarregandoSemana] = useState(false)
 
   useEffect(() => { carregar() }, [])
+
+  useEffect(() => {
+    if (!dataFaturamento) { setSemanaTotal(null); return }
+    buscarSemana(dataFaturamento)
+  }, [dataFaturamento])
+
+  async function buscarSemana(data: string) {
+    setCarregandoSemana(true)
+    const d = new Date(data + 'T12:00:00')
+    // Semana: segunda a domingo
+    const diaSemana = d.getDay() // 0=dom, 1=seg...
+    const diffSeg = diaSemana === 0 ? -6 : 1 - diaSemana
+    const seg = new Date(d); seg.setDate(d.getDate() + diffSeg)
+    const dom = new Date(seg); dom.setDate(seg.getDate() + 6)
+    const inicio = localDate(seg)
+    const fim = localDate(dom)
+    const { data: rows } = await supabase.from('financeiro_lancamentos')
+      .select('valor, juros, pago, pagamento, redirecionado_para')
+      .gte('vencimento', inicio).lte('vencimento', fim)
+    const ativos = (rows ?? []).filter((l: any) => !l.redirecionado_para)
+    const total = ativos.reduce((s: number, l: any) => s + (l.valor ?? 0) + (l.juros ?? 0), 0)
+    setSemanaTotal({ total, qtd: ativos.length, inicio, fim })
+    setCarregandoSemana(false)
+  }
 
   async function carregar() {
     setLoading(true)
@@ -118,12 +144,33 @@ export default function FinanceiroDashboard() {
   async function aprovarPedido() {
     if (!pedidoSelecionado || !dataFaturamento) return
     setAprovando(true)
+
     await supabase.from('pedidos')
       .update({ status: 'APROVADO', data_faturamento: dataFaturamento })
       .eq('grupo_id', pedidoSelecionado.grupo_id)
+
+    // Busca quem criou o pedido para notificar
+    const { data: rows } = await supabase
+      .from('pedidos')
+      .select('created_by')
+      .eq('grupo_id', pedidoSelecionado.grupo_id)
+      .limit(1)
+    const criadorId = (rows?.[0] as any)?.created_by
+    if (criadorId) {
+      const fmtData = new Date(dataFaturamento + 'T12:00:00').toLocaleDateString('pt-BR')
+      await criarNotificacoes([{
+        usuario_id: criadorId,
+        tipo: 'pedido_aprovado',
+        titulo: `Pedido aprovado: ${pedidoSelecionado.fornecedor ?? ''}`,
+        mensagem: `Faturar a partir de ${fmtData}`,
+        link: '/pedidos',
+      }])
+    }
+
     setPedidosPendentes(prev => prev.filter(p => p.grupo_id !== pedidoSelecionado.grupo_id))
     setPedidoSelecionado(null)
     setDataFaturamento('')
+    setSemanaTotal(null)
     setAprovando(false)
   }
 
@@ -270,6 +317,24 @@ export default function FinanceiroDashboard() {
                 <input type="date" className="input" value={dataFaturamento}
                   onChange={e => setDataFaturamento(e.target.value)} />
               </div>
+
+              {dataFaturamento && (
+                <div className={`rounded-lg border px-4 py-3 text-sm ${carregandoSemana ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-blue-200 bg-blue-50'}`}>
+                  {carregandoSemana ? (
+                    <span>Calculando pagamentos da semana...</span>
+                  ) : semanaTotal && (
+                    <>
+                      <div className="text-xs text-blue-500 font-medium mb-1">
+                        Semana de {new Date(semanaTotal.inicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a {new Date(semanaTotal.fim + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </div>
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-blue-700 font-semibold text-base">{fmt(semanaTotal.total)}</span>
+                        <span className="text-xs text-blue-500">{semanaTotal.qtd} lançamento{semanaTotal.qtd !== 1 ? 's' : ''} na programação</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
               <button onClick={() => setPedidoSelecionado(null)}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import * as XLSX from 'xlsx'
-import { supabase } from '../lib/supabase'
+import { supabase, criarNotificacoes } from '../lib/supabase'
+import ChatPedido from '../components/ChatPedido'
 import {
   Plus, X, Link2, CheckCircle2, XCircle, Clock, Search,
   Package, Trash2, Edit2, Ban, ClipboardCheck, AlertTriangle, Check,
@@ -273,6 +274,22 @@ export default function Pedidos() {
     })
     setSaving(false)
     if (error) { alert('Erro ao salvar: ' + error.message); return }
+
+    // Notificar admins sobre novo pedido (exceto o próprio criador)
+    if (!form.grupo_id) {
+      const { data: admins } = await supabase.from('profiles').select('id').eq('is_admin', true)
+      const ids = (admins ?? []).map((a: any) => a.id).filter((id: string) => id !== profile?.id)
+      if (ids.length > 0) {
+        await criarNotificacoes(ids.map((uid: string) => ({
+          usuario_id: uid,
+          tipo: 'pedido_novo',
+          titulo: `Novo pedido de ${form.fornecedor || 'fornecedor'}`,
+          mensagem: `${profile?.nome ?? 'Alguém'} criou o pedido #${String(numeroPedido ?? '').padStart(3, '0')}`,
+          link: '/pedidos',
+        })))
+      }
+    }
+
     setShowForm(false)
     setForm(FORM_VAZIO)
     await carregar()
@@ -1684,6 +1701,13 @@ export default function Pedidos() {
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+
+              {/* Chat do pedido */}
+              {!mostrarHistorico && (
+                <div className="shrink-0 border-t border-gray-100 px-5 py-4 max-h-80 overflow-y-auto">
+                  <ChatPedido grupoId={visualizarGrupoId} fornecedor={primeiroPedido?.fornecedor ?? null} />
                 </div>
               )}
             </div>
