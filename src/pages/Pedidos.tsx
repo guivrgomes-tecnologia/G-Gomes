@@ -434,16 +434,20 @@ export default function Pedidos() {
         }
       }
 
-      // Colunas de lojas: a partir da primeira coluna após "PREÇO F." (ou similar)
-      // Detecta onde começam as colunas de loja (primeira coluna após as fixas)
       const headerRow = raw[headerIdx] as (string | null)[]
-      // Colunas fixas conhecidas: CÓDIGO, DESCRIÇÃO, tamanho, CX, PREÇO U., DESCONTO*, IPI, SUGERIDO, PREÇO F.
-      // Detecta a última coluna fixa procurando "PREÇO F" ou "PRECO F" (case-insensitive)
-      let firstStoreCol = 4 // fallback
-      for (let c = 0; c < (headerRow?.length ?? 0); c++) {
-        const h = String(headerRow?.[c] ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-        if (h.startsWith('PRECOF') || h.startsWith('PREÇOF') || h === 'PRECOFINAL' || h === 'SUGERIDO') {
-          firstStoreCol = c + 1
+
+      // Detecta primeira coluna de loja pela linha de CNPJs (primeira col com CNPJ = 14 dígitos)
+      let firstStoreCol = -1
+      for (let c = 2; c < (cnpjRow?.length ?? 0); c++) {
+        const digits = String(cnpjRow?.[c] ?? '').replace(/[^0-9]/g, '')
+        if (digits.length >= 11) { firstStoreCol = c; break }
+      }
+      // Fallback: buscar pelo header (coluna PREÇO F.)
+      if (firstStoreCol < 0) {
+        firstStoreCol = 4
+        for (let c = 0; c < (headerRow?.length ?? 0); c++) {
+          const h = String(headerRow?.[c] ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+          if (h.startsWith('PRECOF') || h === 'PRECOFINAL') firstStoreCol = c + 1
         }
       }
 
@@ -678,12 +682,19 @@ export default function Pedidos() {
       const cnpjRow = (headerIdxR > 0 ? raw[headerIdxR - 1] : []) as (string | null)[]
       const headerRow = raw[headerIdxR] as (string | null)[]
 
-      // Detecta primeira coluna de loja (após PREÇO F.)
-      let firstStoreColR = 4
-      for (let c = 0; c < (headerRow?.length ?? 0); c++) {
-        const h = String(headerRow?.[c] ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-        if (h.startsWith('PRECOF') || h.startsWith('PREÇOF') || h === 'PRECOFINAL' || h === 'SUGERIDO') {
-          firstStoreColR = c + 1
+      // Detecta primeira coluna de loja pela linha de CNPJs
+      // (primeira coluna com CNPJ válido = 14 dígitos)
+      let firstStoreColR = -1
+      for (let c = 2; c < (cnpjRow?.length ?? 0); c++) {
+        const digits = String(cnpjRow?.[c] ?? '').replace(/[^0-9]/g, '')
+        if (digits.length >= 11) { firstStoreColR = c; break }
+      }
+      // Fallback: buscar pelo header (última coluna de preço)
+      if (firstStoreColR < 0) {
+        firstStoreColR = 4
+        for (let c = 0; c < (headerRow?.length ?? 0); c++) {
+          const h = String(headerRow?.[c] ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+          if (h.startsWith('PRECOF') || h === 'PRECOFINAL') firstStoreColR = c + 1
         }
       }
       const precofIdxR = firstStoreColR - 1
