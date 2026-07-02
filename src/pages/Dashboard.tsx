@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, Flame, ArrowRight } from 'lucide-react'
+import { Calendar, AlertCircle, Clock, Send, Plus, Video, X, CheckCircle2, Flame, ArrowRight, Package } from 'lucide-react'
 import { supabase, Evento, Pendencia } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link, useNavigate } from 'react-router-dom'
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [eventosHoje, setEventosHoje] = useState<Evento[]>([])
   const [pendenciasAlta, setPendenciasAlta] = useState<Pendencia[]>([])
   const [pendenciasSolucao, setPendenciasSolucao] = useState<Pendencia[]>([])
+  const [pedidosPendentes, setPedidosPendentes] = useState<{ grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [showAtrasados, setShowAtrasados] = useState(false)
   const [eventosAtrasados, setEventosAtrasados] = useState<Evento[]>([])
@@ -147,6 +148,17 @@ export default function Dashboard() {
       pendenciasMinhas:   pendComigoData.data?.length ?? 0,
       pendenciasEnviadas: minhasPendData.data?.length ?? 0,
     })
+    // Pedidos pendentes de aprovação
+    const { data: pedidos } = await supabase
+      .from('pedidos').select('grupo_id, numero_pedido, fornecedor, valor_pedido')
+      .eq('status', 'PENDENTE').order('numero_pedido', { ascending: false })
+    const grupos: Record<string, { grupo_id: string; numero_pedido: number | null; fornecedor: string | null; valor_total: number }> = {}
+    for (const p of (pedidos ?? []) as any[]) {
+      if (!grupos[p.grupo_id]) grupos[p.grupo_id] = { grupo_id: p.grupo_id, numero_pedido: p.numero_pedido, fornecedor: p.fornecedor, valor_total: 0 }
+      grupos[p.grupo_id].valor_total += p.valor_pedido ?? 0
+    }
+    setPedidosPendentes(Object.values(grupos))
+
     setLoading(false)
   }
 
@@ -259,8 +271,12 @@ export default function Dashboard() {
 
             {/* Coluna direita: prioridades + stats */}
             <div className="lg:col-span-2 flex flex-col gap-4">
+
+            {/* Alta prioridade + Pedidos pendentes lado a lado */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
             {/* Pendências alta prioridade */}
-            <div className="card overflow-hidden self-start w-full">
+            <div className="card overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-red-100 bg-red-50">
                 <h2 className="text-sm font-semibold text-red-700 flex items-center gap-1.5">
                   <Flame size={14} /> Alta prioridade
@@ -271,7 +287,7 @@ export default function Dashboard() {
               {pendenciasAlta.length === 0 ? (
                 <p className="px-4 py-5 text-xs text-gray-400 text-center">Nenhuma pendência urgente</p>
               ) : (
-                <ul className="divide-y divide-gray-100 max-h-[132px] lg:max-h-none overflow-y-auto">
+                <ul className="divide-y divide-gray-100 max-h-[180px] overflow-y-auto">
                   {pendenciasAlta.map(p => {
                     const euSouDest = p.para_usuario_id === profile?.id
                     return (
@@ -301,6 +317,39 @@ export default function Dashboard() {
                 </ul>
               )}
             </div>
+
+            {/* Pedidos pendentes de aprovação */}
+            <div className="card overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-100 bg-yellow-50">
+                <h2 className="text-sm font-semibold text-yellow-700 flex items-center gap-1.5">
+                  <Package size={14} /> Pedidos para aprovar
+                  {pedidosPendentes.length > 0 && <span className="text-xs bg-yellow-100 text-yellow-600 px-1.5 py-0.5 rounded-full">{pedidosPendentes.length}</span>}
+                </h2>
+                <Link to="/financeiro/dashboard" className="text-xs text-yellow-600 hover:underline"><ArrowRight size={13} /></Link>
+              </div>
+              {pedidosPendentes.length === 0 ? (
+                <p className="px-4 py-5 text-xs text-gray-400 text-center">Nenhum pedido pendente</p>
+              ) : (
+                <ul className="divide-y divide-gray-100 max-h-[180px] overflow-y-auto">
+                  {pedidosPendentes.map(p => (
+                    <li key={p.grupo_id}>
+                      <Link to="/financeiro/dashboard"
+                        className="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-900 truncate">
+                            {p.numero_pedido != null && <span className="text-gray-400">#{String(p.numero_pedido).padStart(3,'0')} · </span>}
+                            {p.fornecedor ?? '—'}
+                          </p>
+                          <p className="text-xs text-gray-400">{p.valor_total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            </div>{/* fim grid alta+pedidos */}
 
             {/* Soluções apresentadas */}
             {pendenciasSolucao.length > 0 && (
