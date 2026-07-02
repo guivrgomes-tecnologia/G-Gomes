@@ -1798,11 +1798,9 @@ export default function Pedidos() {
               )}
 
               {/* Chat do pedido */}
-              {!mostrarHistorico && (
-                <div className="shrink-0 border-t border-gray-100 px-5 py-4 max-h-80 overflow-y-auto">
-                  <ChatPedido grupoId={visualizarGrupoId} fornecedor={primeiroPedido?.fornecedor ?? null} />
-                </div>
-              )}
+              <div className="shrink-0 border-t border-gray-100 px-5 py-4 max-h-80 overflow-y-auto">
+                <ChatPedido grupoId={visualizarGrupoId} fornecedor={primeiroPedido?.fornecedor ?? null} />
+              </div>
             </div>
           </div>
         )
