@@ -727,8 +727,8 @@ export default function Pedidos() {
         const row = raw[r] as unknown[]
         const codigo = row?.[0]
         const descricao = String(row?.[1] ?? '').trim()
-        if (!descricao || descricao.toUpperCase().includes('VALOR TOTAL')) break
-        if (!codigo) continue
+        if (descricao.toUpperCase().includes('VALOR TOTAL')) break
+        if (!descricao || !codigo) continue
 
         const codigoStr = String(codigo).trim()
         const lojaQtds: Record<string, { nome: string; qty: number; valor: number }> = {}
