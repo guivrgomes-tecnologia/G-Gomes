@@ -40,6 +40,8 @@ export default function EntradaNotas() {
   const [erro, setErro] = useState('')
   const [arrastando, setArrastando] = useState(false)
   const [pendingXml, setPendingXml] = useState<NotaParseada[]>([])
+  const [pedidoVinculo, setPedidoVinculo] = useState<string>('') // grupo_id selecionado para vincular
+  const [pedidosDisponiveis, setPedidosDisponiveis] = useState<{ grupo_id: string; numero_pedido: number | null; fornecedor: string | null }[]>([])
   const [editBuffer, setEditBuffer] = useState<Record<string, string>>({})
   const [showManual, setShowManual] = useState(false)
   const [salvandoManual, setSalvandoManual] = useState(false)
@@ -49,6 +51,22 @@ export default function EntradaNotas() {
   })
 
   useEffect(() => { carregar() }, [])
+
+  useEffect(() => {
+    if (pendingXml.length === 0) { setPedidoVinculo(''); return }
+    supabase.from('pedidos').select('grupo_id, numero_pedido, fornecedor')
+      .in('status', ['PENDENTE', 'APROVADO'])
+      .order('numero_pedido', { ascending: false })
+      .then(({ data }) => {
+        // Deduplica por grupo_id
+        const vistos = new Set<string>()
+        const lista = (data ?? []).filter((p: { grupo_id: string }) => {
+          if (vistos.has(p.grupo_id)) return false
+          vistos.add(p.grupo_id); return true
+        })
+        setPedidosDisponiveis(lista as { grupo_id: string; numero_pedido: number | null; fornecedor: string | null }[])
+      })
+  }, [pendingXml])
 
   async function carregar() {
     setLoading(true)
@@ -92,6 +110,7 @@ export default function EntradaNotas() {
         numero_nota: parsed.numero_nota, emitida_em: parsed.emitida_em, chave_acesso: parsed.chave_acesso,
         valor_total: parsed.valor_total, usuario_id: user!.id,
         vprod_nf: parsed.vprod_nf, vfrete_nf: parsed.vfrete_nf, vseg_nf: parsed.vseg_nf, voutro_nf: parsed.voutro_nf, vdesc_nf: parsed.vdesc_nf,
+        pedido_grupo_id: pedidoVinculo || null,
       }).select('id').single()
       if (notaCriada && parsed.itens.length > 0) {
         await supabase.from('entrada_notas_itens').insert(parsed.itens.map((it, ordem) => ({
@@ -102,6 +121,7 @@ export default function EntradaNotas() {
     }
     setEnviando(false)
     setPendingXml([])
+    setPedidoVinculo('')
     if (duplicadas > 0) setErro(`${duplicadas} nota(s) já existiam e foram ignoradas.`)
     await carregar()
   }
@@ -352,8 +372,25 @@ export default function EntradaNotas() {
                 </div>
               ))}
             </div>
+            <div className="px-5 pb-3 shrink-0">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Vincular a um pedido <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <select
+                className="input w-full"
+                value={pedidoVinculo}
+                onChange={e => setPedidoVinculo(e.target.value)}
+              >
+                <option value="">— Sem vínculo —</option>
+                {pedidosDisponiveis.map(p => (
+                  <option key={p.grupo_id} value={p.grupo_id}>
+                    {p.numero_pedido != null ? `#${String(p.numero_pedido).padStart(3, '0')} — ` : ''}{p.fornecedor ?? 'Sem nome'}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="px-5 py-4 border-t border-gray-100 flex gap-3 shrink-0">
-              <button onClick={() => setPendingXml([])} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={() => { setPendingXml([]); setPedidoVinculo('') }} className="btn-secondary flex-1">Cancelar</button>
               <button onClick={confirmarXml} disabled={enviando} className="btn-primary flex-1 flex items-center justify-center gap-1.5">
                 <CheckCircle2 size={15} />
                 {enviando ? 'Salvando...' : `Salvar ${pendingXml.length > 1 ? pendingXml.length + ' notas' : 'nota'}`}
