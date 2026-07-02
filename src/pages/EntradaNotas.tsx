@@ -154,7 +154,7 @@ export default function EntradaNotas() {
     <div className="p-4 sm:p-8">
       <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Entrada de Notas</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Compras</h1>
           <p className="text-sm text-gray-400">Anexe o XML das notas de entrada e controle a chegada de cada uma no escritório</p>
         </div>
         <button onClick={() => setShowManual(true)} className="btn-secondary flex items-center gap-2 text-sm shrink-0">

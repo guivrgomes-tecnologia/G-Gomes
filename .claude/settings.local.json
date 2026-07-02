@@ -62,7 +62,9 @@
       "Bash(npx netlify *)",
       "Bash(netlify deploy *)",
       "Bash(ls ~/.netlify 2>/dev/null; ls ~/Library/Preferences/netlify 2>/dev/null; find /usr/local/bin /opt/homebrew/bin ~/.nvm -name \"netlify\" 2>/dev/null | head -5)",
-      "Bash(vercel --prod)"
+      "Bash(vercel --prod)",
+      "Bash(sed -i '' \"s/label: 'Notas Fiscais'/label: 'Compras'/\" \"/Users/guilherme/Desktop/App - Brasil Lar/src/components/Sidebar.tsx\")",
+      "Bash(sed -i '' 's/Entrada de Notas/Compras/' \"/Users/guilherme/Desktop/App - Brasil Lar/src/pages/EntradaNotas.tsx\")"
     ]
   }
 }

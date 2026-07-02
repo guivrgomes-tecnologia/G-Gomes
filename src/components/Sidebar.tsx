@@ -11,7 +11,7 @@ const ALL_LINKS = [
   { to: '/pendencias', label: 'Pendências',  icon: AlertCircle,     modulo: 'pendencias' },
   { to: '/vendas',     label: 'Vendas',      icon: LineChart,       modulo: null },
   { to: '/financeiro', label: 'Financeiro',  icon: Landmark,        modulo: 'financeiro' },
-  { to: '/notas-fiscais', label: 'Notas Fiscais', icon: Receipt,    modulo: 'notas_fiscais' },
+  { to: '/notas-fiscais', label: 'Compras', icon: Receipt,    modulo: 'notas_fiscais' },
   { to: '/reunioes',   label: 'Reuniões',    icon: Video,           modulo: 'reunioes' },
   { to: '/documentos', label: 'Documentos',  icon: FolderOpen,      modulo: 'documentos' },
   { to: '/casa',       label: 'Casa',        icon: Home,            modulo: 'casa' },
