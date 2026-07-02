@@ -367,8 +367,8 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Pedidos pendentes de aprovação */}
-            <div className="card overflow-hidden">
+            {/* Pedidos pendentes de aprovação — só para aprovadores */}
+            {(profile?.is_admin || profile?.nome?.toLowerCase().includes('suelen')) && <div className="card overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-yellow-100 bg-yellow-50">
                 <h2 className="text-sm font-semibold text-yellow-700 flex items-center gap-1.5">
                   <Package size={14} /> Pedidos para aprovar
@@ -397,7 +397,7 @@ export default function Dashboard() {
                   ))}
                 </ul>
               )}
-            </div>
+            </div>}
 
             </div>{/* fim grid alta+pedidos */}
 
