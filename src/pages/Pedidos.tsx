@@ -767,10 +767,7 @@ export default function Pedidos() {
       ])
 
       await abrirVisualizacao(visualizarGrupoId)
-      const debugCols = storeCols.map(s => `col${s.colQtd}="${String(headerRow[s.colQtd] ?? '')}"->${s.loja?.nome ?? 'NÃO MAPEADA'}`).join('\n')
-      const headerSample = Array.from({ length: Math.min(headerRow.length, 30) }, (_, i) => `[${i}]="${String(headerRow[i] ?? '')}"`)
-        .filter(x => !x.endsWith('""')).join(', ')
-      alert(`Reimportado: ${toUpdate.length} itens atualizados, ${toInsert.length} novos.\n\nheaderIdx=${headerIdxR}, firstStoreCol=${firstStoreColR}\nHeader: ${headerSample}\n\nColunas:\n${debugCols || 'NENHUMA'}`)
+      alert(`Reimportado: ${toUpdate.length} itens atualizados, ${toInsert.length} novos.`)
     } catch (err) {
       alert('Erro ao reimportar: ' + (err instanceof Error ? err.message : String(err)))
     }
